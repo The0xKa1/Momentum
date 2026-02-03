@@ -1,134 +1,593 @@
 import 'package:flutter/material.dart';
-import '../models/workout_model.dart'; // 引入刚才建的模型
-import 'dart:convert'; // 用于解析 JSON
-import 'package:shared_preferences/shared_preferences.dart'; // 用于读取硬盘
-import '../models/exercise_library.dart'; // 引入刚才建的库
-import 'dart:async'; // 引入计时器库
+import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 
+// 引入模型和库
+import '../models/workout_model.dart';
+import '../models/exercise_library.dart';
+import '../services/rest_timer_alarm.dart';
+
+// 引入拆分出的组件模块
+import '../widgets/exercise_card.dart';
+import '../widgets/rest_timer_panel.dart';
 
 class WorkoutPage extends StatefulWidget {
   const WorkoutPage({super.key});
 
   @override
-  State<WorkoutPage> createState() => _WorkoutPageState();
+  State<WorkoutPage> createState() => WorkoutPageState();
 }
 
-class _WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientMixin {
-  // 1. 默认标题
+class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+  // 保持页面状态，切换标签不销毁
   @override
   bool get wantKeepAlive => true;
 
-  String _planTitle = "Rest Day"; 
-  List<Exercise> exercises = []; // 暂时置空，后续根据计划生成动作
-  // --- 计时器相关状态 ---
-  Timer? _restTimer;
-  int _restSeconds = 0; // 剩余秒数
-  int _totalRestSeconds = 90; // 默认休息时间 (例如 90秒)
-  bool _isResting = false;
+  static const String _prefsPlanTemplatesKey = "plan_templates";
+  static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
+  static const String _prefsHiddenPlanKey = "hidden_plan_today";
+  static const String _prefsCompletionKey = "daily_completion_state";
 
-  // 格式化时间显示 (01:30)
+  // --- 状态变量 ---
+  String _planTitle = "Rest Day";
+  List<Exercise> exercises = [];
+  /// 前 _planCount 个是计划模板动作，之后是当日额外动作
+  int _planCount = 0;
+  
+  // 计时器相关
+  Timer? _restTimer;
+  int _restSeconds = 0;
+  int _totalRestSeconds = 90;
+  bool _isResting = false;
+  DateTime? _restEndTime; // 休息结束时间，用于后台计时
+  int _restNotificationToken = 0;
+  
+  // 音频播放器
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isAlarmPlaying = false;
+  
+  // 本地通知
+  late final Future<void> _notificationsInit;
+
+  // 控制器
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _repsController = TextEditingController();
+
+  void refreshData() {
+    print("Refreshing workout data...");
+    _loadTodayPlan();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadTodayPlan();
+    _initAudioPlayer();
+    _notificationsInit = _initNotifications();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _restTimer?.cancel();
+    _stopAlarm();
+    _audioPlayer.dispose();
+    _weightController.dispose();
+    _repsController.dispose();
+    WakelockPlus.disable();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.resumed && _isResting && _restEndTime != null) {
+      // 应用从后台恢复，重新计算剩余时间
+      _recalculateRestTime();
+    }
+  }
+
+  void _initAudioPlayer() async {
+    // 设置音频播放模式为循环
+    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    
+    // 确保 AudioContext 设置允许在静音模式以外播放
+    await _audioPlayer.setAudioContext(AudioContext(
+      android: const AudioContextAndroid(
+        isSpeakerphoneOn: true,
+        stayAwake: true,
+        contentType: AndroidContentType.sonification,
+        usageType: AndroidUsageType.alarm,
+        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: const {AVAudioSessionOptions.duckOthers, AVAudioSessionOptions.mixWithOthers},
+      ),
+    ));
+  }
+
+  Future<void> _initNotifications() async {
+    await initRestTimerNotifications(
+      onDidReceiveNotificationResponse: (details) {
+        // 用户点击通知时的处理
+        if (mounted) {
+          _handleNotificationTap();
+        }
+      },
+    );
+  }
+
+  void _handleNotificationTap() {
+    // 用户点击通知后，如果时间到了，显示弹窗
+    if (_isResting && _restEndTime != null) {
+      _recalculateRestTime();
+    }
+  }
+
+  void _requestRestNotificationSchedule() {
+    if (_restEndTime == null) return;
+    _restNotificationToken += 1;
+    final token = _restNotificationToken;
+    _scheduleRestNotification(_restEndTime!, token);
+  }
+
+  Future<void> _scheduleRestNotification(DateTime endTime, int token) async {
+    await _notificationsInit;
+    if (token != _restNotificationToken) return;
+    // 取消之前的通知
+    await restTimerNotificationsPlugin.cancel(id: restTimerNotificationId);
+    await cancelRestTimerAlarm();
+    if (token != _restNotificationToken) return;
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await scheduleRestTimerAlarm(endTime);
+      return;
+    }
+    
+    // 设置通知在指定秒数后触发
+    const androidDetails = AndroidNotificationDetails(
+      restTimerFinishChannelId,
+      'Rest Timer',
+      channelDescription: 'Notifications for rest timer completion',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound('alarm'),
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      enableVibration: true,
+      ongoing: false,
+      autoCancel: true,
+    );
+    
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      interruptionLevel: InterruptionLevel.timeSensitive,
+    );
+    
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+    
+    // 在指定时间后显示通知
+    await restTimerNotificationsPlugin.zonedSchedule(
+      id: restTimerNotificationId,
+      title: 'Rest Time Over! 🏋️',
+      body: 'Time for your next set!',
+      scheduledDate: tz.TZDateTime.from(endTime, tz.local),
+      notificationDetails: notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
+  Future<void> _cancelRestNotification() async {
+    await restTimerNotificationsPlugin.cancel(id: restTimerNotificationId);
+    await cancelRestTimerAlarm();
+  }
+
+  Future<void> _showOngoingRestNotification() async {
+    if (defaultTargetPlatform != TargetPlatform.android || _restEndTime == null) return;
+    await _notificationsInit;
+
+    final androidDetails = AndroidNotificationDetails(
+      restTimerOngoingChannelId,
+      'Rest Timer (Ongoing)',
+      channelDescription: 'Ongoing rest timer countdown',
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      showWhen: true,
+      when: _restEndTime!.millisecondsSinceEpoch,
+      usesChronometer: true,
+      chronometerCountDown: true,
+      timeoutAfter: _restEndTime!
+          .difference(DateTime.now())
+          .inMilliseconds
+          .clamp(0, 1 << 31)
+          .toInt(),
+    );
+
+    final notificationDetails = NotificationDetails(android: androidDetails);
+
+    await restTimerNotificationsPlugin.show(
+      id: restTimerOngoingNotificationId,
+      title: 'Resting...',
+      body: '倒计时进行中',
+      notificationDetails: notificationDetails,
+    );
+  }
+
+  Future<void> _cancelOngoingRestNotification() async {
+    await restTimerNotificationsPlugin.cancel(id: restTimerOngoingNotificationId);
+  }
+
+  void _recalculateRestTime() {
+    if (_restEndTime == null) return;
+
+    final now = DateTime.now();
+    final remaining = _restEndTime!.difference(now).inSeconds;
+
+    if (remaining <= 0) {
+      // 时间已到或已过
+      _restSeconds = 0;
+      _stopRestTimer();
+      _playAlarm();
+      _showRestFinishedDialog();
+    } else {
+      // 更新剩余时间
+      setState(() {
+        _restSeconds = remaining;
+      });
+    }
+  }
+
+  // --- 计时器逻辑 ---
   String get _timerString {
     int min = _restSeconds ~/ 60;
     int sec = _restSeconds % 60;
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
-  // 开始休息
   void _startRestTimer({int seconds = 90}) {
     _stopRestTimer();
-
+    _restEndTime = DateTime.now().add(Duration(seconds: seconds));
+    
     setState(() {
       _totalRestSeconds = seconds;
       _restSeconds = seconds;
       _isResting = true;
     });
 
+    // 启用屏幕常亮（可选）
+    WakelockPlus.enable();
+    
+    // 设置后台通知
+    _requestRestNotificationSchedule();
+    // 在状态栏显示倒计时（Android）
+    _showOngoingRestNotification();
+
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        if (_restSeconds > 0) {
-          _restSeconds--;
-        } else {
-          _stopRestTimer();
-          // --- 新增：触发弹窗提醒 ---
-          _showRestFinishedDialog(); 
-        }
-      });
+      if (_restEndTime == null) return;
+      final remaining = _restEndTime!.difference(DateTime.now()).inSeconds;
+      if (remaining <= 0) {
+        _restSeconds = 0;
+        _stopRestTimer();
+        _playAlarm();
+        _showRestFinishedDialog();
+      } else {
+        setState(() {
+          _restSeconds = remaining;
+        });
+      }
     });
   }
-    void _showRestFinishedDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // 用户必须点击按钮才能关闭，防止错过提醒
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            "Rest Finished!",
-            style: TextStyle(color: Color(0xFFBB86FC), fontWeight: FontWeight.bold),
-          ),
-          content: const Text(
-            "Time to start your next set. Let's go!",
-            style: TextStyle(color: Colors.white),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                "GOT IT",
-                style: TextStyle(color: Color(0xFFBB86FC), fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-  // 停止休息
+
   void _stopRestTimer() {
+    _restNotificationToken += 1;
     _restTimer?.cancel();
+    _restEndTime = null;
+    _stopAlarm(); // 停止提醒音
+    _cancelRestNotification(); // 取消通知
+    _cancelOngoingRestNotification(); // 取消状态栏倒计时
+    WakelockPlus.disable();
     setState(() {
       _isResting = false;
     });
   }
 
-  // 增加/减少时间
+  Future<void> _playAlarm() async {
+    if (_isAlarmPlaying) return;
+    
+    try {
+      _isAlarmPlaying = true;
+      // 尝试播放自定义提醒音（循环播放）
+      await _audioPlayer.play(AssetSource('sounds/alarm.mp3'));
+    } catch (e) {
+      print('播放自定义提醒音失败: $e，使用URL音频作为备选');
+      // 如果音频文件不存在，使用在线提示音作为备选
+      try {
+        await _audioPlayer.play(UrlSource(
+          'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'
+        ));
+      } catch (e2) {
+        print('播放在线提醒音也失败: $e2');
+        _isAlarmPlaying = false;
+      }
+    }
+  }
+
+  Future<void> _stopAlarm() async {
+    if (!_isAlarmPlaying) return;
+    
+    try {
+      await _audioPlayer.stop();
+      _isAlarmPlaying = false;
+    } catch (e) {
+      print('停止提醒音失败: $e');
+    }
+  }
+
   void _adjustTime(int seconds) {
     setState(() {
       _restSeconds += seconds;
       if (_restSeconds < 0) _restSeconds = 0;
-      // 如果加时间超过了总时间，把总时间也撑大，保证进度条好看
-      if (_restSeconds > _totalRestSeconds) _totalRestSeconds = _restSeconds;
+      if (_restSeconds > _totalRestSeconds) {
+        _totalRestSeconds = _restSeconds;
+      }
+    });
+
+    if (_restEndTime != null) {
+      final updatedEnd = _restEndTime!.add(Duration(seconds: seconds));
+      _restEndTime = updatedEnd.isBefore(DateTime.now()) ? DateTime.now() : updatedEnd;
+    }
+    
+    // 重新设置通知时间
+    if (_isResting && _restSeconds > 0) {
+      _requestRestNotificationSchedule();
+      _showOngoingRestNotification();
+    }
+  }
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  void _showRestFinishedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Rest Finished!", style: TextStyle(color: Color(0xFFBB86FC), fontSize: 24, fontWeight: FontWeight.bold)),
+        content: const Text("Time for the next set!", style: TextStyle(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _stopAlarm();
+              Navigator.pop(context);
+            },
+            child: const Text("GOT IT", style: TextStyle(color: Color(0xFFBB86FC), fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _persistCompletionState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final completionString = prefs.getString(_prefsCompletionKey);
+    Map<String, dynamic> completionMap = {};
+    if (completionString != null) {
+      completionMap = json.decode(completionString);
+    }
+
+    final key = _normalizeDate(DateTime.now()).toIso8601String();
+    final completionState = exercises
+        .map((exercise) => exercise.sets.map((set) => set.isCompleted).toList())
+        .toList();
+    completionMap[key] = completionState;
+    await prefs.setString(_prefsCompletionKey, json.encode(completionMap));
+  }
+
+  // --- 数据加载 ---
+  Future<void> _loadTodayPlan() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonString = prefs.getString('events_data');
+    String? templatesString = prefs.getString(_prefsPlanTemplatesKey);
+    String? extrasString = prefs.getString(_prefsDailyExtrasKey);
+    
+    setState(() {
+      _planTitle = "Rest Day";
+      exercises = [];
+      _planCount = 0;
+    });
+    
+    if (jsonString == null) return;
+
+    Map<String, dynamic> decodedMap = json.decode(jsonString);
+    DateTime today = _normalizeDate(DateTime.now());
+    String key = today.toIso8601String();
+
+    List<dynamic> plans = decodedMap[key] ?? [];
+    String? planName = plans.isNotEmpty ? plans.first.toString() : null;
+    if (planName == null || planName.isEmpty) return;
+
+    List<Exercise> planExercises = [];
+    if (templatesString != null) {
+      final Map<String, dynamic> templates = json.decode(templatesString);
+      if (templates.containsKey(planName)) {
+        final List<dynamic> rawExercises = templates[planName] ?? [];
+        planExercises = _parseExercises(rawExercises);
+      }
+    } else {
+      // 兼容旧标签模板
+      planExercises = ExerciseLibrary.getExercisesForList([planName]);
+    }
+
+    // 今日被隐藏的计划动作（仅今日不显示，不改变模板）
+    Set<String> hiddenToday = {};
+    final hiddenString = prefs.getString(_prefsHiddenPlanKey);
+    if (hiddenString != null) {
+      final Map<String, dynamic> hiddenMap = json.decode(hiddenString);
+      final list = hiddenMap[key];
+      if (list != null) {
+        hiddenToday = (list as List<dynamic>).map((e) => e.toString()).toSet();
+      }
+    }
+    planExercises = planExercises.where((e) => !hiddenToday.contains(e.name)).toList();
+
+    List<Exercise> extraExercises = [];
+    if (extrasString != null) {
+      final Map<String, dynamic> extras = json.decode(extrasString);
+      if (extras.containsKey(key)) {
+        final List<dynamic> rawExtras = extras[key] ?? [];
+        extraExercises = _parseExercises(rawExtras);
+      }
+    }
+
+    final combinedExercises = [...planExercises, ...extraExercises];
+    final completionString = prefs.getString(_prefsCompletionKey);
+    if (completionString != null) {
+      final completionMap = json.decode(completionString);
+      final completionForToday = completionMap[key];
+      if (completionForToday is List) {
+        for (int i = 0; i < combinedExercises.length && i < completionForToday.length; i++) {
+          final setFlags = completionForToday[i];
+          if (setFlags is List) {
+            final sets = combinedExercises[i].sets;
+            for (int j = 0; j < sets.length && j < setFlags.length; j++) {
+              final flag = setFlags[j];
+              if (flag is bool) {
+                sets[j].isCompleted = flag;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    setState(() {
+      _planTitle = planName;
+      _planCount = planExercises.length;
+      exercises = combinedExercises;
     });
   }
 
-  @override
-  void dispose() {
-    _restTimer?.cancel(); // 记得销毁防止内存泄漏
-    _nameController.dispose();
-    _weightController.dispose();
-    _repsController.dispose();
-    _setsController.dispose();
-    super.dispose();
-  }
-  // --- 新增：动作输入控制器 ---
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _weightController = TextEditingController();
-  final TextEditingController _repsController = TextEditingController();
-  final TextEditingController _setsController = TextEditingController(text: "3"); // 默认3组
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTodayPlan(); // 页面一启动，就去读计划
+  List<Exercise> _parseExercises(List<dynamic> rawExercises) {
+    return rawExercises.map((raw) {
+      final data = Map<String, dynamic>.from(raw as Map);
+      final String name = (data['name'] ?? '').toString();
+      final List<dynamic> rawSets = data['sets'] ?? [];
+      final sets = rawSets.map((rawSet) {
+        final setData = Map<String, dynamic>.from(rawSet as Map);
+        final double weight = (setData['weight'] ?? 0).toDouble();
+        final int reps = (setData['reps'] ?? 0).toInt();
+        return WorkoutSet(weight: weight, reps: reps);
+      }).toList();
+      return Exercise(name: name, sets: sets);
+    }).toList();
   }
 
-  void _showAddExerciseDialog() {
-    // 清空上次的输入
-    _nameController.clear();
-    _weightController.clear();
-    _repsController.clear();
-    _setsController.text = "3";
+  List<Map<String, dynamic>> _serializeExercises(List<Exercise> list) {
+    return list.map((e) {
+      return {
+        "name": e.name,
+        "sets": e.sets.map((s) => {"weight": s.weight, "reps": s.reps}).toList(),
+      };
+    }).toList();
+  }
+
+  Future<void> _appendDailyExtraExercises(List<Exercise> extras) async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
+    Map<String, dynamic> decodedMap = {};
+
+    if (jsonString != null) {
+      decodedMap = json.decode(jsonString);
+    }
+
+    DateTime today = _normalizeDate(DateTime.now());
+    String key = today.toIso8601String();
+    List<dynamic> existing = decodedMap[key] ?? [];
+    existing.addAll(_serializeExercises(extras));
+    decodedMap[key] = existing;
+
+    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+  }
+
+  Future<void> _saveExtraExerciseAt(int extraIndex, Exercise updated) async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
+    if (jsonString == null) return;
+
+    Map<String, dynamic> decodedMap = json.decode(jsonString);
+    DateTime today = _normalizeDate(DateTime.now());
+    String key = today.toIso8601String();
+    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
+    if (extraIndex < 0 || extraIndex >= list.length) return;
+    list[extraIndex] = _serializeExercises([updated]).first;
+    decodedMap[key] = list;
+    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+  }
+
+  /// 从今日训练中移除计划动作（仅隐藏，不删模板）
+  Future<void> _removePlanExerciseFromToday(String exerciseName) async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonString = prefs.getString(_prefsHiddenPlanKey);
+    Map<String, dynamic> decodedMap = {};
+    if (jsonString != null) decodedMap = json.decode(jsonString);
+
+    DateTime today = _normalizeDate(DateTime.now());
+    String key = today.toIso8601String();
+    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
+    if (!list.contains(exerciseName)) list.add(exerciseName);
+    decodedMap[key] = list;
+
+    await prefs.setString(_prefsHiddenPlanKey, json.encode(decodedMap));
+    await _loadTodayPlan();
+  }
+
+  /// 删除当日额外动作中的某一项
+  Future<void> _removeExtraExercise(int extraIndex) async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
+    if (jsonString == null) return;
+
+    Map<String, dynamic> decodedMap = json.decode(jsonString);
+    DateTime today = _normalizeDate(DateTime.now());
+    String key = today.toIso8601String();
+    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
+    if (extraIndex < 0 || extraIndex >= list.length) return;
+    list.removeAt(extraIndex);
+    decodedMap[key] = list;
+
+    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    await _loadTodayPlan();
+  }
+
+  /// 编辑当日额外动作中的某一项
+  void _showEditExtraExerciseDialog(int extraIndex) {
+    if (extraIndex < 0 || extraIndex >= exercises.length - _planCount) return;
+    final exercise = exercises[_planCount + extraIndex];
+    final draft = _ExerciseDraft(
+      name: exercise.name,
+      weight: exercise.sets.isNotEmpty ? exercise.sets.first.weight.toString() : "0",
+      reps: exercise.sets.isNotEmpty ? exercise.sets.first.reps.toString() : "10",
+      sets: exercise.sets.length.toString(),
+    );
 
     showModalBottomSheet(
       context: context,
@@ -138,520 +597,427 @@ class _WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "ADD EXERCISE",
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.bold,
-                ),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                left: 24,
+                right: 24,
+                top: 24,
               ),
-              const SizedBox(height: 20),
-
-              // 1. 动作名称
-              _buildInputJson("Exercise Name", _nameController),
-              const SizedBox(height: 16),
-
-              // 2. 详细参数 (一行三个：重量、次数、组数)
-              Row(
-                children: [
-                  Expanded(child: _buildInputJson("Weight (kg)", _weightController, isNumber: true)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildInputJson("Reps", _repsController, isNumber: true)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildInputJson("Sets", _setsController, isNumber: true)),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-              
-              // 3. 确认按钮
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _addCustomExercise,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFBB86FC),
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "EDIT EXTRA EXERCISE",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 12,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          onPressed: () => Navigator.pop(context),
+                        )
+                      ],
                     ),
-                  ),
-                  child: const Text("ADD TO WORKOUT", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: draft.nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: "Exercise name"),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: draft.weightController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Weight (kg)"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: draft.repsController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Reps"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: draft.setsController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Sets"),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final newExercise = draft.toExercise();
+                          if (newExercise == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Please complete all fields"), duration: Duration(seconds: 1))
+                            );
+                            return;
+                          }
+                          final prefs = await SharedPreferences.getInstance();
+                          String? jsonString = prefs.getString(_prefsDailyExtrasKey);
+                          Map<String, dynamic> decodedMap = jsonString != null ? json.decode(jsonString) : {};
+                          DateTime today = _normalizeDate(DateTime.now());
+                          String key = today.toIso8601String();
+                          List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
+                          if (extraIndex < list.length) {
+                            list[extraIndex] = _serializeExercises([newExercise]).first;
+                            decodedMap[key] = list;
+                            await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+                            await _loadTodayPlan();
+                          }
+                          if (mounted) Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFBB86FC),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text("SAVE", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
-    );
+    ).whenComplete(() => draft.dispose());
   }
 
-  // 辅助函数：快速构建输入框
-  Widget _buildInputJson(String label, TextEditingController controller, {bool isNumber = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.black.withOpacity(0.3),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // 专门用于给某个动作"加一组"的弹窗
-  void _showAddSingleSetDialog(Exercise exercise) {
-    // 1. 智能预填充：获取上一组的数据作为默认值，方便用户修改
-    double lastWeight = 0;
-    int lastReps = 0;
-    if (exercise.sets.isNotEmpty) {
-      lastWeight = exercise.sets.last.weight;
-      lastReps = exercise.sets.last.reps;
+  // --- 交互逻辑 ---
+  void _handleSetToggle(int exIndex, int setIndex) {
+    if (_isResting) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Resting... Please wait"), duration: Duration(milliseconds: 500))
+      );
+      return;
     }
 
-    // 填入控制器
-    // endsWith(".0") 是为了把 60.0 显示成 60，看起来更简洁
-    _weightController.text = lastWeight == 0 ? "" : lastWeight.toString().replaceAll(RegExp(r'\.0$'), '');
-    _repsController.text = lastReps == 0 ? "" : lastReps.toString();
+    setState(() {
+      var set = exercises[exIndex].sets[setIndex];
+      bool isFinishing = !set.isCompleted;
+      set.isCompleted = isFinishing;
+      if (isFinishing) {
+        _startRestTimer(seconds: 90);
+      }
+    });
+    _persistCompletionState();
+  }
+
+  void _showAddSetDialog(int exIndex) {
+    final lastSet = exercises[exIndex].sets.isNotEmpty ? exercises[exIndex].sets.last : null;
+    _weightController.text = lastSet?.weight.toString() ?? "0";
+    _repsController.text = lastSet?.reps.toString() ?? "10";
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Add Set", style: TextStyle(color: Color(0xFFBB86FC))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _weightController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: "Weight (kg)"),
+            ),
+            TextField(
+              controller: _repsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Reps"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              final weight = double.tryParse(_weightController.text);
+              final reps = int.tryParse(_repsController.text);
+              if (weight == null || reps == null || reps <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter valid numbers"), duration: Duration(seconds: 1))
+                );
+                return;
+              }
+              setState(() {
+                exercises[exIndex].sets.add(WorkoutSet(weight: weight, reps: reps));
+              });
+              if (exIndex >= _planCount) {
+                _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
+              }
+              _persistCompletionState();
+              Navigator.pop(context);
+            },
+            child: const Text("ADD", style: TextStyle(color: Color(0xFFBB86FC))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditSetDialog(int exIndex, int setIndex) {
+    if (exIndex < 0 || exIndex >= exercises.length) return;
+    if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
+    final set = exercises[exIndex].sets[setIndex];
+    _weightController.text = set.weight.toString();
+    _repsController.text = set.reps.toString();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Edit Set", style: TextStyle(color: Color(0xFFBB86FC))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _weightController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: "Weight (kg)"),
+            ),
+            TextField(
+              controller: _repsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Reps"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              final weight = double.tryParse(_weightController.text);
+              final reps = int.tryParse(_repsController.text);
+              if (weight == null || reps == null || reps <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter valid numbers"), duration: Duration(seconds: 1))
+                );
+                return;
+              }
+              setState(() {
+                exercises[exIndex].sets[setIndex].weight = weight;
+                exercises[exIndex].sets[setIndex].reps = reps;
+              });
+              if (exIndex >= _planCount) {
+                _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text("SAVE", style: TextStyle(color: Color(0xFFBB86FC))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSet(int exIndex, int setIndex) {
+    if (exIndex < 0 || exIndex >= exercises.length) return;
+    if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
+    setState(() {
+      exercises[exIndex].sets.removeAt(setIndex);
+    });
+    if (exIndex >= _planCount) {
+      _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
+    }
+    _persistCompletionState();
+  }
+
+  void _showAddExtraExerciseDialog() {
+    if (_planTitle == "Rest Day") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a plan for today first"), duration: Duration(seconds: 1))
+      );
+      return;
+    }
+    final _ExerciseDraft draft = _ExerciseDraft();
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // 让弹窗高度自适应键盘
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 标题：显示当前是在给哪个动作加组
-              Text(
-                "ADD SET TO ${exercise.name.toUpperCase()}",
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.bold,
-                ),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                left: 24,
+                right: 24,
+                top: 24,
               ),
-              const SizedBox(height: 20),
-
-              // 输入区域：重量 和 次数 并排显示
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildInputJson("Weight (kg)", _weightController, isNumber: true)
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildInputJson("Reps", _repsController, isNumber: true)
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-              
-              // 确认按钮
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // 保存逻辑
-                    final double w = double.tryParse(_weightController.text) ?? lastWeight;
-                    final int r = int.tryParse(_repsController.text) ?? lastReps;
-
-                    setState(() {
-                      exercise.sets.add(
-                        WorkoutSet(weight: w, reps: r, isCompleted: false)
-                      );
-                    });
-                    Navigator.pop(context); // 关闭弹窗
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFBB86FC),
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "ADD EXTRA EXERCISE",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 12,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          onPressed: () => Navigator.pop(context),
+                        )
+                      ],
                     ),
-                  ),
-                  child: const Text("CONFIRM ADD", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: draft.nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: "Exercise name"),
+                      onChanged: (_) => setModalState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: draft.weightController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Weight (kg)"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: draft.repsController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Reps"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: draft.setsController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Sets"),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final exercise = draft.toExercise();
+                          if (exercise == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Please complete all fields"), duration: Duration(seconds: 1))
+                            );
+                            return;
+                          }
+                          await _appendDailyExtraExercises([exercise]);
+                          await _loadTodayPlan();
+                          if (mounted) Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFBB86FC),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text("ADD", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
-    );
-  }
-
-  // 核心逻辑：添加动作到列表
-  void _addCustomExercise() {
-    if (_nameController.text.isEmpty) return;
-
-    final String name = _nameController.text;
-    final double weight = double.tryParse(_weightController.text) ?? 0;
-    final int reps = int.tryParse(_repsController.text) ?? 0;
-    final int setsCount = int.tryParse(_setsController.text) ?? 3;
-
-    // 生成组数数据
-    List<WorkoutSet> newSets = List.generate(
-      setsCount, 
-      (index) => WorkoutSet(weight: weight, reps: reps)
-    );
-
-    setState(() {
-      exercises.add(Exercise(name: name, sets: newSets));
+    ).whenComplete(() {
+      draft.dispose();
     });
-
-    Navigator.pop(context);
   }
 
-  // 2. 辅助函数：标准化日期（必须和 PlanPage 里的逻辑一模一样！）
-  DateTime _normalizeDate(DateTime date) {
-    return DateTime.utc(date.year, date.month, date.day);
-  }
-
-  // 3. 核心逻辑：读取今天的计划
-  Future<void> _loadTodayPlan() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString('events_data');
-    
-    // 默认重置
-    setState(() {
-      _planTitle = "Rest Day";
-      exercises = [];
-    });
-    
-    if (jsonString == null) return;
-
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-
-    if (decodedMap.containsKey(key)) {
-      List<dynamic> plans = decodedMap[key];
-      if (plans.isNotEmpty) {
-        setState(() {
-          List<String> allTags = [];
-          for (var p in plans) {
-            allTags.addAll(p.toString().split(' & '));
-          }
-          _planTitle = allTags.toSet().join(" & ");
-          exercises = ExerciseLibrary.getExercisesForList(allTags);
-        });
-      }
-    }
-  }
-
-  // 辅助方法：生成简约的时间调整按钮
-  Widget _buildTimeButton(String label, int seconds) {
-    return InkWell(
-      onTap: () => _adjustTime(seconds),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3), // 深黑色背景，体现层次感
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white, 
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRestTimerPanel() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2C), // 深灰背景
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              // 1. 左侧：时间显示
-              const Icon(Icons.timer_outlined, color: Color(0xFFBB86FC)),
-              const SizedBox(width: 12),
-              Text(
-                "REST  $_timerString",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              
-              const Spacer(), // 把按钮推到右边
-              
-              // 2. 右侧：控制按钮组
-              
-              // 减时间 (-10s)
-              _buildTimeButton("-10s", -10),
-              
-              const SizedBox(width: 8),
-
-              // 加时间 (+30s)
-              _buildTimeButton("+30s", 30),
-              
-              const SizedBox(width: 12),
-
-              // 跳过按钮 (改为图标更节省空间)
-              InkWell(
-                onTap: _stopRestTimer,
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.skip_next, color: Colors.white, size: 20),
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // 3. 底部：进度条
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              // 分母加个保护，防止除以0
-              value: _restSeconds / (_totalRestSeconds <= 0 ? 1 : _totalRestSeconds),
-              backgroundColor: Colors.white.withOpacity(0.1),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFBB86FC)),
-              minHeight: 4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // --- 页面构建 ---
   @override
   Widget build(BuildContext context) {
-    super.build(context); // 因为用了 AutomaticKeepAliveClientMixin
+    super.build(context); // AutomaticKeepAliveClientMixin 要求
+    
     return Scaffold(
-      // FAB 逻辑：休息时不显示按钮，保持界面纯净，防止误触
-      floatingActionButton: _isResting
-          ? null
-          : FloatingActionButton(
-              onPressed: _showAddExerciseDialog,
-              backgroundColor: Theme.of(context).primaryColor,
-              child: const Icon(Icons.add, color: Colors.black),
-            ),
-      
+      floatingActionButton: _isResting ? null : FloatingActionButton(
+        onPressed: _showAddExtraExerciseDialog,
+        backgroundColor: Theme.of(context).primaryColor,
+        child: const Icon(Icons.add, color: Colors.black),
+      ),
       body: SafeArea(
-        // 使用 Stack 是为了让计时器面板悬浮在最上层
         child: Stack(
           children: [
-            // --- 底层：内容滚动区域 ---
             Padding(
-              // 关键点：如果计时器显示中，给底部增加额外的 Padding
-              // 这样列表最后的内容就不会被计时器挡住
               padding: EdgeInsets.only(bottom: _isResting ? 100 : 0),
               child: CustomScrollView(
                 slivers: [
-                  // 1. 顶部标题区域
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "TODAY'S SESSION",
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 12,
-                              letterSpacing: 1.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // 动态显示今天的计划名称
-                          Text(
-                            _planTitle,
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -1.0,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // 2. 根据状态显示不同内容 (核心逻辑分支)
-                  
-                  // 分支 A: 休息日
-                  if (_planTitle == "Rest Day")
-                    SliverToBoxAdapter(
-                      child: Container(
-                        height: 300,
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.bedtime,
-                                size: 64, color: Colors.white.withOpacity(0.2)),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Rest & Recover",
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5)),
-                            )
-                          ],
-                        ),
-                      ),
-                    )
-                  
-                  // 分支 B: 有计划名称，但还没添加动作 (自定义计划初始状态)
-                  else if (exercises.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Container(
-                        height: 300,
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.edit_note,
-                                size: 64, color: Colors.white.withOpacity(0.2)),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Custom Plan: $_planTitle",
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5)),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Tap '+' to add exercises",
-                              style: TextStyle(
-                                  color: Theme.of(context).primaryColor),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  
-                  // 分支 C: 正常的动作列表
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          // 找到 SliverList -> SliverChildBuilderDelegate 里面的这一段
-                        return ExerciseCard(
-                          exercise: exercises[index],
-                          
-                          // 1. 原有的打钩逻辑
-                          // lib/pages/workout_page.dart
-
-                          onSetToggle: (setIndex) {
-                            // --- 优化后的逻辑 ---
-                            var set = exercises[index].sets[setIndex];
-                            
-                            // 如果正在休息，禁止任何操作（或者弹出提示）
-                            if (_isResting) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Resting... Please wait"), duration: Duration(milliseconds: 500))
-                              );
-                              return; 
-                            }
-
-                            setState(() {
-                              bool isFinishing = !set.isCompleted;
-                              set.isCompleted = isFinishing;
-                              
-                              // 只有在点击“完成”时才触发计时
-                              if (isFinishing) {
-                                _startRestTimer(seconds: 90);
-                              }
-                            });
-},
-
-                          // 2. 新增：添加组的逻辑
-                          onAddSet: () {
-                            setState(() {
-                              _showAddSingleSetDialog(exercises[index]);
-                            });
-                          },
-                        );
-                        },
-                        childCount: exercises.length,
-                      ),
-                    ),
-
-                  // 3. 底部占位 (确保滚动到底部时有一点留白)
+                  _buildHeaderSection(),
+                  _buildMainContent(),
                   const SliverToBoxAdapter(child: SizedBox(height: 80)),
                 ],
               ),
             ),
-
-            // --- 顶层：悬浮计时器面板 ---
             if (_isResting)
               Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                // 调用之前定义的面板构建方法
-                child: _buildRestTimerPanel(),
+                bottom: 0, left: 0, right: 0,
+                child: RestTimerPanel(
+                  timerString: _timerString,
+                  progress: _restSeconds / (_totalRestSeconds <= 0 ? 1 : _totalRestSeconds),
+                  onSkip: _stopRestTimer,
+                  onAdjust: _adjustTime,
+                ),
               ),
           ],
         ),
@@ -659,163 +1025,100 @@ class _WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClient
     );
   }
 
-}
-
-// --- 下面是独立的组件，负责渲染每个动作卡片 ---
-
-class ExerciseCard extends StatelessWidget {
-  final Exercise exercise;
-  final Function(int setIndex) onSetToggle; // 回调函数
-  final VoidCallback onAddSet;
-
-  const ExerciseCard({
-    super.key,
-    required this.exercise,
-    required this.onSetToggle,
-    required this.onAddSet,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E), // 卡片背景色
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 动作名称
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                exercise.name,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_horiz, color: Colors.grey),
-                onPressed: () {}, // 更多选项（如删除动作）
-              )
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // 表头 (Set | Previous | Weight | Reps | Done)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Row(
-              children: [
-                _buildHeader("SET", width: 40),
-                _buildHeader("KG", flex: 1),
-                _buildHeader("REPS", flex: 1),
-                const SizedBox(width: 40), // Checkbox 占位
-              ],
-            ),
-          ),
-
-          // 组数列表
-          ...List.generate(exercise.sets.length, (index) {
-            final set = exercise.sets[index];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              height: 44, // 每一行的高度
-              decoration: set.isCompleted
-                  ? BoxDecoration(
-                      color: Colors.green.withOpacity(0.1), // 完成后微微发绿
-                      borderRadius: BorderRadius.circular(8),
-                    )
-                  : null,
-              child: Row(
-                children: [
-                  // 1. 组号
-                  SizedBox(
-                    width: 40,
-                    child: Center(
-                      child: Text(
-                        "${index + 1}",
-                        style: TextStyle(
-                          color: set.isCompleted ? Colors.green : Colors.grey,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  
-                  // 2. 重量
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        "${set.weight}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-
-                  // 3. 次数
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        "${set.reps}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-
-                  // 4. 复选框 (核心交互)
-                  SizedBox(
-                    width: 40,
-                    child: Checkbox(
-                      value: set.isCompleted,
-                      activeColor: const Color(0xFFBB86FC), // 选中后的紫色
-                      checkColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      onChanged: (val) {
-                        onSetToggle(index); // 触发父组件更新
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          
-          // 添加组数按钮
-          Center(
-            child: TextButton(
-              onPressed: onAddSet,
-              child: const Text(
-                "+ Add Set",
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ),
-          )
-        ],
+  Widget _buildHeaderSection() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("TODAY'S SESSION", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, letterSpacing: 1.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(_planTitle, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: -1.0)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildHeader(String text, {double? width, int? flex}) {
-    Widget child = Center(
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.grey,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
+  Widget _buildMainContent() {
+    if (_planTitle == "Rest Day") {
+      return SliverToBoxAdapter(
+        child: Container(
+          height: 300, alignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bedtime, size: 64, color: Colors.white.withOpacity(0.2)),
+              const SizedBox(height: 16),
+              Text("Rest & Recover", style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            ],
+          ),
         ),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) => ExerciseCard(
+          exercise: exercises[index],
+          onSetToggle: (setIndex) => _handleSetToggle(index, setIndex),
+          onAddSet: () => _showAddSetDialog(index),
+          onEditSet: (setIndex) => _showEditSetDialog(index, setIndex),
+          onDeleteSet: (setIndex) => _deleteSet(index, setIndex),
+          onRemove: () {
+            if (index < _planCount) {
+              _removePlanExerciseFromToday(exercises[index].name);
+            } else {
+              _removeExtraExercise(index - _planCount);
+            }
+          },
+          onEdit: index >= _planCount ? () => _showEditExtraExerciseDialog(index - _planCount) : null,
+          isExtra: index >= _planCount,
+        ),
+        childCount: exercises.length,
       ),
     );
-    
-    if (flex != null) return Expanded(flex: flex, child: child);
-    return SizedBox(width: width, child: child);
+  }
+}
+
+class _ExerciseDraft {
+  final TextEditingController nameController;
+  final TextEditingController weightController;
+  final TextEditingController repsController;
+  final TextEditingController setsController;
+
+  _ExerciseDraft({
+    String name = "",
+    String weight = "0",
+    String reps = "10",
+    String sets = "3",
+  })  : nameController = TextEditingController(text: name),
+        weightController = TextEditingController(text: weight),
+        repsController = TextEditingController(text: reps),
+        setsController = TextEditingController(text: sets);
+
+  Exercise? toExercise() {
+    final name = nameController.text.trim();
+    final weight = double.tryParse(weightController.text);
+    final reps = int.tryParse(repsController.text);
+    final sets = int.tryParse(setsController.text);
+
+    if (name.isEmpty || weight == null || reps == null || sets == null) {
+      return null;
+    }
+    if (reps <= 0 || sets <= 0 || weight < 0) return null;
+
+    return Exercise(
+      name: name,
+      sets: List.generate(sets, (_) => WorkoutSet(weight: weight, reps: reps)),
+    );
+  }
+
+  void dispose() {
+    nameController.dispose();
+    weightController.dispose();
+    repsController.dispose();
+    setsController.dispose();
   }
 }

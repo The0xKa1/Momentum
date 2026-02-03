@@ -9,12 +9,14 @@ class HomeEntryPage extends StatefulWidget {
   State<HomeEntryPage> createState() => _HomeEntryPageState();
 }
 
+final GlobalKey<WorkoutPageState> workoutKey = GlobalKey<WorkoutPageState>();
+
 class _HomeEntryPageState extends State<HomeEntryPage> {
   int _currentIndex = 0; // 当前选中的是第几个图标
 
   // 页面列表：先把核心的 Workout 放进去，其他的先用占位符代替
   final List<Widget> _pages = [
-    const WorkoutPage(),    // 0: 训练
+    WorkoutPage(key: workoutKey),    // 0: 训练
     const PlanPage(),       // 1: 计划 (这里修改了！)
     const Center(child: Text("Diet Page (Coming Soon)")), // 2: 饮食
   ];
@@ -31,6 +33,10 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (int index) {
+          if (index == 0)
+          {
+            workoutKey.currentState?.refreshData();
+          }
           setState(() {
             _currentIndex = index; // 刷新界面
           });

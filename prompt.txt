@@ -1,0 +1,274 @@
+Flutter 实现后台定时通知
+
+实现 Flutter 应用中的后台定时通知功能，让用户即使在应用关闭的情况下也能收到提醒，这是许多应用开发者面临的常见需求。 比如在健康类应用中，定时提醒用户进行锻炼或服药， 这能极大的提升用户体验。 这篇文章将探讨几种实现此目标的方法， 并提供代码示例和操作指南。
+
+使用 flutter_local_notifications 插件结合 workmanager
+这个组合是一种常见的，而且较为稳妥的方案，通过本地通知插件和后台任务管理插件，共同完成定时通知的目标。
+
+原理：
+
+flutter_local_notifications 插件负责展示本地通知，它允许应用在不需要网络的情况下展示通知内容。workmanager 插件则允许应用在后台执行预定的任务。 二者的结合方式是， workmanager 触发后台任务，在后台任务中，通过flutter_local_notifications 创建通知。
+
+操作步骤：
+
+添加依赖： 在 pubspec.yaml 文件中添加必要的插件。
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_local_notifications: ^16.3.2
+  workmanager: ^0.5.0
+
+复制
+初始化 flutter_local_notifications： 在 main.dart 中进行初始化。
+
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const AndroidInitializationSettings initializationSettingsAndroid =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  final InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+  );
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+   runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+    const MyApp({super.key});
+
+   @override
+   Widget build(BuildContext context){
+    return MaterialApp(home:Container(),);
+   }
+  }
+
+
+
+在 AndroidManifest.xml 添加最佳智能手机
+
+   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+
+
+请注意，@mipmap/ic_launcher 是您的应用程序启动图标的资源名称。
+
+设置 workmanager： 初始化 workmanager 并注册后台任务。
+
+import 'package:workmanager/workmanager.dart';
+
+void callbackDispatcher() {
+    Workmanager().executeTask((task, inputData) async {
+
+        const AndroidNotificationDetails androidNotificationDetails =
+           AndroidNotificationDetails(
+                'your channel id', 
+               'your channel name',
+               channelDescription:'your channel description',
+                importance: Importance.max,
+                priority: Priority.high,
+                ticker: 'ticker'
+           );
+
+         const NotificationDetails notificationDetails = NotificationDetails(
+                android: androidNotificationDetails);
+         await flutterLocalNotificationsPlugin.show(
+                    0,
+                    '锻炼提醒',
+                     '该进行今天的锻炼了！',
+                      notificationDetails);
+
+       return Future.value(true);
+
+    });
+}
+
+// ...
+
+Future<void> setupWorkManager() async {
+  await Workmanager().initialize(
+      callbackDispatcher, // Top level function
+     isInDebugMode: true
+    );
+ Workmanager().registerPeriodicTask(
+   "workout_reminder_task",
+     "simpleTask",
+       frequency: Duration(hours: 24), //每天执行一次
+    );
+ }
+
+
+ void main() async {
+    WidgetsFlutterBinding.ensureInitialized();
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  final InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid,
+       );
+      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+   await setupWorkManager();
+
+     runApp(const MyApp());
+  }
+
+ class MyApp extends StatelessWidget {
+       const MyApp({super.key});
+
+       @override
+        Widget build(BuildContext context){
+         return MaterialApp(home:Container(),);
+       }
+   }
+
+
+
+
+在这里 simpleTask 指代具体注册的任务名称，需要和回调函数 callbackDispatcher 中使用的task保持一致。 your channel id，your channel name 以及 your channel description 可以在任意字符串，请确保为不同的channel设置不同的 id。请务必按照您应用程序的启动图标名称设置 AndroidInitializationSettings 的构造参数。
+
+
+处理后台任务： 在 callbackDispatcher() 函数中实现发送通知的逻辑。
+
+Android 特定配置：
+
+Android 需要 SCHEDULE_EXACT_ALARM 权限，这个权限需要在 AndroidManifest.xml 中配置
+对于Android 12或更高版本，可能需要进行其他的优化来适应系统对后台执行的限制。 请确保检查 workmanager 插件的最新文档，了解最佳实践和限制。
+优点：
+
+可以在应用关闭时仍然触发通知。
+跨平台兼容（iOS 也支持类似的配置）。
+注意事项：
+
+用户有可能在系统设置中关闭应用的通知权限，导致通知无法正常展示。
+为了节约电量和资源，Android 系统对后台任务做了诸多限制， 定期检查代码以应对版本更新。
+用户可能强制停止你的app，这会导致定时任务停止执行。
+部分设备厂商（尤其是中国的设备）有额外的电池管理策略，这些策略有可能阻止应用后台任务的执行，你需要让用户在系统设置中配置例外名单。
+使用 android_alarm_manager_plus 插件
+
+android_alarm_manager_plus 插件主要在 Android 平台使用，允许应用注册并管理 AlarmManager 事件。 与workmanager相比，其优点是能够在设定的准确时间触发任务， 但可能更耗费资源。最佳智能手机
+
+原理：
+此插件通过 Android 原生的 AlarmManager 功能来安排在指定时间执行的任务。
+
+操作步骤：
+
+添加依赖： 在 pubspec.yaml 文件中添加依赖。
+
+dependencies:
+  flutter:
+    sdk: flutter
+   android_alarm_manager_plus: ^2.0.2
+
+
+初始化： 在 main.dart 中初始化插件，并设置报警。
+
+ import 'dart:isolate';
+ import 'dart:ui';
+
+ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+ const int helloAlarmID = 0;
+ const String isolateName = 'isolate';
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+     FlutterLocalNotificationsPlugin();
+  
+   @pragma('vm:entry-point')
+  void alarmCallback() async {
+
+      final androidNotificationDetails =
+         const  AndroidNotificationDetails(
+               'alarm_id',
+             'alarm',
+              priority: Priority.high,
+              importance: Importance.max,
+             );
+
+       final  notificationDetails =  NotificationDetails(
+              android: androidNotificationDetails,
+         );
+
+      await flutterLocalNotificationsPlugin.show(
+       0,
+        'Workout Notification',
+         'It\'s time for your workout',
+        notificationDetails,
+     );
+     }
+
+
+  void main() async {
+   WidgetsFlutterBinding.ensureInitialized();
+
+   final receivePort = ReceivePort();
+ final int isolateId = receivePort.sendPort.hashCode;
+ final FlutterLocalNotificationsPlugin  localNotificationsPlugin =FlutterLocalNotificationsPlugin();
+
+   const androidSetting  = AndroidInitializationSettings("@mipmap/ic_launcher");
+
+   const settings = InitializationSettings(
+      android: androidSetting,
+   );
+   await localNotificationsPlugin.initialize(settings);
+
+
+   await AndroidAlarmManager.initialize();
+
+     int hour = 20;
+     int min = 00;
+       DateTime now = DateTime.now();
+      final nextAlarmTime  = DateTime(now.year, now.month, now.day, hour,min );
+
+     if( nextAlarmTime.isBefore(now)){
+          nextAlarmTime.add(const Duration(days: 1));
+       }
+      final  callbackHandle =PluginUtilities.getCallbackHandle(alarmCallback);
+
+     await AndroidAlarmManager.oneShotAt(
+         nextAlarmTime,
+         helloAlarmID,
+         callbackHandle!,
+         wakeup: true,
+         exact: true,
+          rescheduleOnReboot:true
+      );
+
+   runApp(const MyApp());
+  }
+  
+  class MyApp extends StatelessWidget {
+      const MyApp({super.key});
+
+      @override
+       Widget build(BuildContext context){
+        return MaterialApp(home:Container(),);
+       }
+   }
+
+ ```
+**Android 特定配置：** 
+
+* 确保Android的最低sdk版本不低于19
+```groovy
+   minSdkVersion 19
+   compileSdkVersion 33
+
+复制
+需要将 alarmCallback 声明为 top level function
+为了确保 alarm manager 的准确执行， 请务必设置 wakeup: true, exact: true, rescheduleOnReboot:true 这些参数。
+同 workmanager，在部分定制过的 Android 设备上，可能需要用户配置忽略电池优化选项，来确保通知按时触发。
+优点：
+
+可以精准控制通知触发的时间点。
+缺点：
+
+仅限于 Android 平台， 兼容性稍差。
+较频繁的触发，可能增加电池消耗。
+结论
+本文探讨了两种在 Flutter 中实现后台定时通知的方法， 每种方案都有自己的特点。对于那些只需要定期，无需在固定时间点通知的应用， 使用workmanager往往更为合适， 因为资源消耗更小。 如果你需要通知准时触发，那可以使用android_alarm_manager_plus, 记得让用户将你的 App添加到忽略电池优化的白名单中，这样能大大减少被厂商策略限制而无法准时触发的概率。 选择哪个方法应该基于你的应用程序需求和用户情况。开发者应谨慎评估各方案的优缺点，确保为用户提供最佳的用户体验。

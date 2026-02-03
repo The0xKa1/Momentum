@@ -1,32 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'pages/home_entry.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'pages/splash_page.dart';
+import 'services/rest_timer_alarm.dart';
 
-void main() {
-  runApp(const FitFlowApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化时区
+  tz.initializeTimeZones();
+  // 使用本地时区（自动检测）
+  tz.setLocalLocation(tz.getLocation(tz.local.name));
+
+  await initRestTimerNotifications();
+  await AndroidAlarmManager.initialize();
+  
+  runApp(const MyApp());
 }
 
-class FitFlowApp extends StatelessWidget {
-  const FitFlowApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FitFlow',
-      debugShowCheckedModeBanner: false, // 去掉右上角那个丑丑的 Debug 条
+      title: 'Momentum',
+      debugShowCheckedModeBanner: false, // 去掉右上角那个 Debug 条幅
       theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFFBB86FC),
+        scaffoldBackgroundColor: const Color(0xFF121212),
         useMaterial3: true,
-        brightness: Brightness.dark, // 强制深色模式
-        scaffoldBackgroundColor: const Color(0xFF121212), // 高级黑背景
-        primaryColor: const Color(0xFFBB86FC), // 强调色（赛博朋克紫）
-        
-        // 全局配置 Google 字体 (Inter 是非常通用的现代化无衬线字体)
-        textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).apply(
-          bodyColor: Colors.white,
-          displayColor: Colors.white,
+        textTheme: GoogleFonts.interTextTheme(
+          Theme.of(context).textTheme,
         ),
       ),
-      home: const HomeEntryPage(), // 指向我们的主导航页
+      // --- 修改这里 ---
+      home: const SplashPage(), // 启动时先进入 SplashPage
     );
   }
 }

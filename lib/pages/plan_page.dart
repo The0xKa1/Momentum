@@ -2,6 +2,7 @@ import 'dart:convert'; // 用于把数据转换成 JSON 字符串
 import 'package:shared_preferences/shared_preferences.dart'; // 硬盘存储工具
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'plan_settings_page.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -22,16 +23,11 @@ class _PlanPageState extends State<PlanPage> {
     DateTime.utc(2024, 2, 15): ['Back & Biceps'],
     DateTime.utc(2024, 2, 16): ['Leg Day (Heavy)'],
   };
-
-  // 预设的快捷选项
-  final List<String> _presets = [
-    "Chest", "Back", "Legs", 
-    "Shoulders", "Arms", "Cardio", "Rest"
-  ];
+  final Map<DateTime, Set<String>> _completedByDate = {};
+  List<String> _templateNames = [];
 
   @override
   void dispose() {
-    _eventController.dispose();
     super.dispose();
   }
 
@@ -40,6 +36,8 @@ class _PlanPageState extends State<PlanPage> {
     super.initState();
     _selectedDay = _focusedDay;
     _loadEventsFromPrefs(); // <--- App 启动时加载数据
+    _loadCompletedFromPrefs();
+    _loadTemplatesFromPrefs();
   }
 
   List<String> _getEventsForDay(DateTime day) {
@@ -48,12 +46,27 @@ class _PlanPageState extends State<PlanPage> {
     return _events[dateKey] ?? [];
   }
 
-  // 1. 用于获取用户输入的控制器
-  final TextEditingController _eventController = TextEditingController();
-
   // 2. 辅助函数：标准化日期（去除时分秒，只保留年月日，确保Key一致）
   DateTime _normalizeDate(DateTime date) {
     return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  Set<String> _getCompletedForDay(DateTime day) {
+    final dateKey = _normalizeDate(day);
+    return _completedByDate[dateKey] ?? {};
+  }
+
+  bool _isDayCompleted(DateTime day) {
+    final dateKey = _normalizeDate(day);
+    final events = _events[dateKey] ?? [];
+    if (events.isEmpty) return false;
+    final completed = _completedByDate[dateKey] ?? {};
+    return events.every(completed.contains);
+  }
+
+  bool _isEventCompleted(DateTime day, String planName) {
+    final completed = _getCompletedForDay(day);
+    return completed.contains(planName);
   }
 
   // 把数据存入硬盘
@@ -97,10 +110,48 @@ class _PlanPageState extends State<PlanPage> {
       });
     });
   }
-void _showAddEventDialog() {
-    // 清空之前的输入，或者保留？通常新建计划应该是空的
-    _eventController.clear();
 
+  Future<void> _saveCompletedToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, dynamic> encoded = {};
+    _completedByDate.forEach((key, value) {
+      encoded[key.toIso8601String()] = value.toList();
+    });
+    await prefs.setString('completed_plans', json.encode(encoded));
+  }
+
+  Future<void> _loadCompletedFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('completed_plans');
+    if (jsonString == null) return;
+
+    final Map<String, dynamic> decoded = json.decode(jsonString);
+    setState(() {
+      _completedByDate.clear();
+      decoded.forEach((key, value) {
+        final dateKey = _normalizeDate(DateTime.parse(key));
+        final plans = Set<String>.from(value as List);
+        _completedByDate[dateKey] = plans;
+      });
+    });
+  }
+
+  Future<void> _loadTemplatesFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('plan_templates');
+    if (jsonString == null) {
+      setState(() {
+        _templateNames = [];
+      });
+      return;
+    }
+
+    Map<String, dynamic> decodedMap = json.decode(jsonString);
+    setState(() {
+      _templateNames = decodedMap.keys.toList();
+    });
+  }
+  void _showAddEventDialog() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -109,165 +160,137 @@ void _showAddEventDialog() {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        // --- 关键修改点 1: 使用 StatefulBuilder ---
-        // 这样我们才能在弹窗内部刷新 Chip 的选中颜色，而不影响外面的页面
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            
-            // 获取当前输入框里的所有部分 (用 " & " 分割)
-            List<String> currentParts = _eventController.text.isEmpty
-                ? []
-                : _eventController.text.split(' & ');
-
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-                left: 24,
-                right: 24,
-                top: 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 顶部标题栏
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "EDIT PLAN",
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 12,
-                          letterSpacing: 1.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        onPressed: () => Navigator.pop(context),
-                      )
-                    ],
+                  Text(
+                    "SELECT PLAN",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 12,
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  
-                  const SizedBox(height: 16),
-
-                  // --- 关键修改点 2: 使用 FilterChip 实现叠加逻辑 ---
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _presets.map((plan) {
-                      // 判断当前这个标签是否已经被选在输入框里了
-                      final isSelected = currentParts.contains(plan);
-
-                      return FilterChip(
-                        label: Text(plan),
-                        // 选中状态样式
-                        selected: isSelected,
-                        selectedColor: const Color(0xFFBB86FC), // 选中变紫色
-                        checkmarkColor: Colors.black, // 勾勾变成黑色
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        // 未选中状态背景
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide.none,
-                        ),
-                        
-                        // --- 关键修改点 3: 叠加/移除逻辑 ---
-                        onSelected: (bool selected) {
-                          setModalState(() { // 刷新弹窗界面
-                            if (selected) {
-                              // 如果选中，追加到列表
-                              if (!currentParts.contains(plan)) {
-                                currentParts.add(plan);
-                              }
-                            } else {
-                              // 如果取消，从列表移除
-                              currentParts.remove(plan);
-                            }
-                            // 重新组合成字符串，赋值给输入框
-                            _eventController.text = currentParts.join(' & ');
-                          });
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    onPressed: () => Navigator.pop(context),
+                  )
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_templateNames.isEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "No plan templates yet.",
+                      style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
+                          );
+                          _loadTemplatesFromPrefs();
+                        },
+                        child: const Text("Go to Plan Settings"),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: _templateNames.map((planName) {
+                      return ListTile(
+                        title: Text(planName),
+                        onTap: () {
+                          _savePlanForSelectedDay(planName);
+                          Navigator.pop(context);
                         },
                       );
                     }).toList(),
                   ),
-
-                  const SizedBox(height: 20),
-                  
-                  // 输入框 (允许用户在标签基础上继续手动修改)
-                  TextField(
-                    controller: _eventController,
-                    // 注意：这里去掉了 autofocus，因为用户可能想先点标签，不想键盘弹出来挡住标签
-                    // 如果你希望键盘一直弹起，可以设为 true
-                    autofocus: false, 
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
-                    decoration: InputDecoration(
-                      hintText: "Select tags or type...",
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                      filled: true,
-                      fillColor: Colors.black.withOpacity(0.3),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    ),
-                    // 当用户手动打字时，我们需要刷新状态，以便 Chip 也能正确响应（可选）
-                    onChanged: (text) {
-                      setModalState(() {}); 
-                    },
-                    onSubmitted: (_) => _saveEvent(),
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // 保存按钮
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _saveEvent,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFBB86FC),
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text("SAVE PLAN", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+                ),
+            ],
+          ),
         );
       },
     );
   }
 
   // 4. 保存事件的逻辑
-void _saveEvent() {
-    if (_eventController.text.isEmpty) return;
+  void _savePlanForSelectedDay(String planName) {
+    if (planName.isEmpty) return;
 
     setState(() {
       final dateKey = _normalizeDate(_selectedDay ?? _focusedDay);
-      if (_events[dateKey] != null) {
-        _events[dateKey]!.add(_eventController.text);
+      _events[dateKey] = [planName];
+      _completedByDate.remove(dateKey);
+    });
+
+    _saveEventsToPrefs();
+    _saveCompletedToPrefs();
+  }
+
+  void _togglePlanCompleted(String planName) {
+    final dateKey = _normalizeDate(_selectedDay ?? _focusedDay);
+    final wasCompleted = _isDayCompleted(dateKey);
+    setState(() {
+      final completed = _completedByDate.putIfAbsent(dateKey, () => <String>{});
+      if (completed.contains(planName)) {
+        completed.remove(planName);
       } else {
-        _events[dateKey] = [_eventController.text];
+        completed.add(planName);
+      }
+      if (completed.isEmpty) {
+        _completedByDate.remove(dateKey);
       }
     });
-    
-    _saveEventsToPrefs(); // <--- 新增：每次修改后立即存盘！
 
-    _eventController.clear();
-    Navigator.pop(context);
+    _saveCompletedToPrefs();
+
+    final isCompletedNow = _isDayCompleted(dateKey);
+    final todayKey = _normalizeDate(DateTime.now());
+    if (!wasCompleted && isCompletedNow && dateKey == todayKey && mounted) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Text("Great job!", style: TextStyle(color: Colors.white)),
+            content: Text(
+              "You've completed all plans for today. Keep it up!",
+              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK", style: TextStyle(color: Color(0xFFBB86FC))),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
   @override
@@ -295,14 +318,29 @@ void _saveEvent() {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "SCHEDULE",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "SCHEDULE",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 12,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.tune, color: Colors.grey, size: 20),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
+                            );
+                            _loadTemplatesFromPrefs();
+                          },
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     _buildEventList(),
@@ -393,6 +431,29 @@ Widget _buildCalendar() {
       },
       
       eventLoader: _getEventsForDay,
+      calendarBuilders: CalendarBuilders(
+        markerBuilder: (context, day, events) {
+          if (events.isEmpty) return null;
+          final isCompleted = _isDayCompleted(day);
+          final markerColor = isCompleted ? const Color(0xFF4CAF50) : Colors.grey;
+          final count = events.length > 3 ? 3 : events.length;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              count,
+              (_) => Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: markerColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -424,6 +485,7 @@ Widget _buildCalendar() {
       itemCount: events.length,
       itemBuilder: (context, index) {
         final eventText = events[index];
+        final isCompleted = _isEventCompleted(_selectedDay!, eventText);
         
         // 使用 Dismissible 包裹内容，实现滑动删除
         return Dismissible(
@@ -448,15 +510,20 @@ Widget _buildCalendar() {
               // 1. 从内存列表中删除
               final dateKey = _normalizeDate(_selectedDay!);
               _events[dateKey]!.removeAt(index);
+              _completedByDate[dateKey]?.remove(eventText);
               
               // 如果这天没计划了，把这天的 Key 也删掉（让日历上的小点消失）
               if (_events[dateKey]!.isEmpty) {
                 _events.remove(dateKey);
+                _completedByDate.remove(dateKey);
+              } else if (_completedByDate[dateKey]?.isEmpty ?? false) {
+                _completedByDate.remove(dateKey);
               }
             });
             
             // 2. 立即同步到硬盘
             _saveEventsToPrefs();
+            _saveCompletedToPrefs();
 
             // 3. 提示用户
             ScaffoldMessenger.of(context).showSnackBar(
@@ -469,38 +536,45 @@ Widget _buildCalendar() {
           },
 
           // 这里是原本的列表项 UI
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFBB86FC),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    eventText,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
+          child: GestureDetector(
+            onTap: () => _togglePlanCompleted(eventText),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: isCompleted ? const Color(0xFF4CAF50) : const Color(0xFFBB86FC),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                ),
-                // 加一个小箭头提示可以互动
-                Icon(Icons.chevron_left, color: Colors.white.withOpacity(0.1), size: 16),
-              ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      eventText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: isCompleted ? Colors.white70 : Colors.white,
+                        decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: isCompleted ? const Color(0xFF4CAF50) : Colors.white.withOpacity(0.2),
+                    size: 18,
+                  ),
+                ],
+              ),
             ),
           ),
         );
