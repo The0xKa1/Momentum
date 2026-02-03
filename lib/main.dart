@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -14,8 +15,10 @@ void main() async {
   // 使用本地时区（自动检测）
   tz.setLocalLocation(tz.getLocation(tz.local.name));
 
-  await initRestTimerNotifications();
-  await AndroidAlarmManager.initialize();
+  if (!kIsWeb) {
+    await initRestTimerNotifications();
+    await AndroidAlarmManager.initialize();
+  }
   
   runApp(const MyApp());
 }
