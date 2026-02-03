@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_strings.dart';
 import '../models/workout_model.dart';
 
 class PlanSettingsPage extends StatefulWidget {
@@ -85,6 +86,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
+        final strings = AppStrings.of(context);
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
@@ -103,7 +105,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          existingName == null ? "NEW PLAN" : "EDIT PLAN",
+                          existingName == null ? strings.newPlan : strings.editPlan,
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.5),
                             fontSize: 12,
@@ -121,7 +123,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                     TextField(
                       controller: nameController,
                       style: const TextStyle(color: Colors.white, fontSize: 18),
-                      decoration: const InputDecoration(labelText: "Plan name"),
+                      decoration: InputDecoration(labelText: strings.planName),
                       onChanged: (_) => setModalState(() {}),
                     ),
                     const SizedBox(height: 16),
@@ -142,7 +144,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  "EXERCISE ${index + 1}",
+                                  "${strings.exercise} ${index + 1}",
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.5),
                                     fontSize: 12,
@@ -165,7 +167,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                             TextField(
                               controller: draft.nameController,
                               style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(labelText: "Exercise name"),
+                              decoration: InputDecoration(labelText: strings.exerciseName),
                             ),
                             const SizedBox(height: 10),
                             Row(
@@ -175,7 +177,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                                     controller: draft.weightController,
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     style: const TextStyle(color: Colors.white),
-                                    decoration: const InputDecoration(labelText: "Weight (kg)"),
+                                    decoration: InputDecoration(labelText: strings.weightKg),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -184,7 +186,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                                     controller: draft.repsController,
                                     keyboardType: TextInputType.number,
                                     style: const TextStyle(color: Colors.white),
-                                    decoration: const InputDecoration(labelText: "Reps"),
+                                    decoration: InputDecoration(labelText: strings.reps),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -193,7 +195,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                                     controller: draft.setsController,
                                     keyboardType: TextInputType.number,
                                     style: const TextStyle(color: Colors.white),
-                                    decoration: const InputDecoration(labelText: "Sets"),
+                                    decoration: InputDecoration(labelText: strings.sets),
                                   ),
                                 ),
                               ],
@@ -218,7 +220,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text("+ Add Exercise"),
+                        child: Text(strings.addExercise),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -229,7 +231,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                           final name = nameController.text.trim();
                           if (name.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Please enter plan name"), duration: Duration(seconds: 1))
+                              SnackBar(content: Text(strings.pleaseEnterPlanName), duration: const Duration(seconds: 1))
                             );
                             return;
                           }
@@ -239,7 +241,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                             final exercise = draft.toExercise();
                             if (exercise == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Please complete all exercise fields"), duration: Duration(seconds: 1))
+                                SnackBar(content: Text(strings.completeExerciseFields), duration: const Duration(seconds: 1))
                               );
                               return;
                             }
@@ -260,7 +262,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text("SAVE PLAN", style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: Text(strings.savePlan, style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -289,58 +291,63 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Plan Settings"),
+        title: Text(AppStrings.of(context).planSettings),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditPlan(),
         backgroundColor: const Color(0xFFBB86FC),
         child: const Icon(Icons.add, color: Colors.black),
       ),
-      body: _templates.isEmpty
-          ? Center(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_templates.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 20),
               child: Text(
-                "No plans yet. Tap + to create one.",
+                AppStrings.of(context).noPlansYet,
                 style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                textAlign: TextAlign.center,
               ),
             )
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: _templates.entries.map((entry) {
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          entry.key,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
+          else
+            ..._templates.entries.map((entry) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.key,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.grey),
-                        onPressed: () => _openEditPlan(
-                          existingName: entry.key,
-                          existingExercises: entry.value,
-                        ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.grey),
+                      onPressed: () => _openEditPlan(
+                        existingName: entry.key,
+                        existingExercises: entry.value,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                        onPressed: () => _deletePlan(entry.key),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                      onPressed: () => _deletePlan(entry.key),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+        ],
+      ),
     );
   }
 }

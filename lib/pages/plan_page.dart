@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // 硬盘存储工�
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'plan_settings_page.dart';
+import '../services/app_strings.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -175,7 +176,7 @@ class _PlanPageState extends State<PlanPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    "SELECT PLAN",
+                    AppStrings.of(context).selectPlan,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.5),
                       fontSize: 12,
@@ -195,7 +196,7 @@ class _PlanPageState extends State<PlanPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "No plan templates yet.",
+                      AppStrings.of(context).noPlanTemplatesYet,
                       style: TextStyle(color: Colors.white.withOpacity(0.6)),
                     ),
                     const SizedBox(height: 12),
@@ -210,7 +211,7 @@ class _PlanPageState extends State<PlanPage> {
                           );
                           _loadTemplatesFromPrefs();
                         },
-                        child: const Text("Go to Plan Settings"),
+                        child: Text(AppStrings.of(context).goToPlanSettings),
                       ),
                     ),
                   ],
@@ -276,15 +277,21 @@ class _PlanPageState extends State<PlanPage> {
         builder: (context) {
           return AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text("Great job!", style: TextStyle(color: Colors.white)),
+            title: Text(
+              AppStrings.of(context).greatJob,
+              style: const TextStyle(color: Colors.white),
+            ),
             content: Text(
-              "You've completed all plans for today. Keep it up!",
+              AppStrings.of(context).completedAllPlans,
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text("OK", style: TextStyle(color: Color(0xFFBB86FC))),
+                child: Text(
+                  AppStrings.of(context).ok,
+                  style: const TextStyle(color: Color(0xFFBB86FC)),
+                ),
               ),
             ],
           );
@@ -322,7 +329,7 @@ class _PlanPageState extends State<PlanPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "SCHEDULE",
+                          AppStrings.of(context).schedule,
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.5),
                             fontSize: 12,
@@ -468,8 +475,8 @@ Widget _buildCalendar() {
             const SizedBox(height: 40),
             Icon(Icons.hotel_class, size: 48, color: Colors.white.withOpacity(0.2)),
             const SizedBox(height: 16),
-            Text(
-              "Rest Day",
+                Text(
+                  AppStrings.of(context).restDay,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.5),
                 fontSize: 18,
@@ -527,10 +534,10 @@ Widget _buildCalendar() {
 
             // 3. 提示用户
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Plan deleted"), 
-                duration: Duration(seconds: 1),
-                backgroundColor: Color(0xFF1E1E1E),
+              SnackBar(
+                content: Text(AppStrings.of(context).planDeleted),
+                duration: const Duration(seconds: 1),
+                backgroundColor: const Color(0xFF1E1E1E),
               ),
             );
           },

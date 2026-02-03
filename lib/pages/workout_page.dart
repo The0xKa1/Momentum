@@ -12,6 +12,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/workout_model.dart';
 import '../models/exercise_library.dart';
 import '../services/rest_timer_alarm.dart';
+import '../services/app_strings.dart';
 
 // 引入拆分出的组件模块
 import '../widgets/exercise_card.dart';
@@ -181,10 +182,11 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     );
     
     // 在指定时间后显示通知
+    final strings = AppStrings.of(context);
     await restTimerNotificationsPlugin.zonedSchedule(
       id: restTimerNotificationId,
-      title: 'Rest Time Over! 🏋️',
-      body: 'Time for your next set!',
+      title: strings.restTimeOverTitle,
+      body: strings.restTimeOverBody,
       scheduledDate: tz.TZDateTime.from(endTime, tz.local),
       notificationDetails: notificationDetails,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -224,8 +226,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
     await restTimerNotificationsPlugin.show(
       id: restTimerOngoingNotificationId,
-      title: 'Resting...',
-      body: '倒计时进行中',
+      title: AppStrings.of(context).restingTitle,
+      body: AppStrings.of(context).countdownInProgress,
       notificationDetails: notificationDetails,
     );
   }
@@ -371,15 +373,21 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Rest Finished!", style: TextStyle(color: Color(0xFFBB86FC), fontSize: 24, fontWeight: FontWeight.bold)),
-        content: const Text("Time for the next set!", style: TextStyle(fontSize: 16)),
+        title: Text(
+          AppStrings.of(context).restFinished,
+          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        content: Text(AppStrings.of(context).timeForNextSet, style: const TextStyle(fontSize: 16)),
         actions: [
           TextButton(
             onPressed: () {
               _stopAlarm();
               Navigator.pop(context);
             },
-            child: const Text("GOT IT", style: TextStyle(color: Color(0xFFBB86FC), fontSize: 16, fontWeight: FontWeight.bold)),
+            child: Text(
+              AppStrings.of(context).gotIt,
+              style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -615,7 +623,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "EDIT EXTRA EXERCISE",
+                          AppStrings.of(context).editExtraExercise,
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.5),
                             fontSize: 12,
@@ -633,7 +641,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                     TextField(
                       controller: draft.nameController,
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: "Exercise name"),
+                      decoration: InputDecoration(
+                        labelText: AppStrings.of(context).exerciseName,
+                        labelStyle: const TextStyle(color: Colors.white70),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -643,7 +654,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.weightController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Weight (kg)"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).weightKg,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -652,7 +666,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.repsController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Reps"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).reps,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -661,7 +678,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.setsController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Sets"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).sets,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                       ],
@@ -674,7 +694,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           final newExercise = draft.toExercise();
                           if (newExercise == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Please complete all fields"), duration: Duration(seconds: 1))
+                              SnackBar(
+                                content: Text(AppStrings.of(context).completeExerciseFields),
+                                duration: const Duration(seconds: 1),
+                              )
                             );
                             return;
                           }
@@ -700,7 +723,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text("SAVE", style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: Text(AppStrings.of(context).save, style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -717,7 +740,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   void _handleSetToggle(int exIndex, int setIndex) {
     if (_isResting) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Resting... Please wait"), duration: Duration(milliseconds: 500))
+        SnackBar(
+          content: Text(AppStrings.of(context).restingWait),
+          duration: const Duration(milliseconds: 500),
+        )
       );
       return;
     }
@@ -742,26 +768,37 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Add Set", style: TextStyle(color: Color(0xFFBB86FC))),
+        title: Text(
+          AppStrings.of(context).addSet,
+          style: const TextStyle(color: Color(0xFFBB86FC)),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _weightController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: "Weight (kg)"),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: AppStrings.of(context).weightKg,
+                labelStyle: const TextStyle(color: Colors.white70),
+              ),
             ),
             TextField(
               controller: _repsController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Reps"),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: AppStrings.of(context).reps,
+                labelStyle: const TextStyle(color: Colors.white70),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+            child: Text(AppStrings.of(context).cancel, style: const TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () {
@@ -769,7 +806,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               final reps = int.tryParse(_repsController.text);
               if (weight == null || reps == null || reps <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Please enter valid numbers"), duration: Duration(seconds: 1))
+                  SnackBar(
+                    content: Text(AppStrings.of(context).pleaseEnterValidNumbers),
+                    duration: const Duration(seconds: 1),
+                  )
                 );
                 return;
               }
@@ -782,7 +822,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               _persistCompletionState();
               Navigator.pop(context);
             },
-            child: const Text("ADD", style: TextStyle(color: Color(0xFFBB86FC))),
+            child: Text(AppStrings.of(context).add, style: const TextStyle(color: Color(0xFFBB86FC))),
           ),
         ],
       ),
@@ -800,26 +840,37 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Edit Set", style: TextStyle(color: Color(0xFFBB86FC))),
+        title: Text(
+          AppStrings.of(context).editSet,
+          style: const TextStyle(color: Color(0xFFBB86FC)),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _weightController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: "Weight (kg)"),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: AppStrings.of(context).weightKg,
+                labelStyle: const TextStyle(color: Colors.white70),
+              ),
             ),
             TextField(
               controller: _repsController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Reps"),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: AppStrings.of(context).reps,
+                labelStyle: const TextStyle(color: Colors.white70),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+            child: Text(AppStrings.of(context).cancel, style: const TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () {
@@ -827,7 +878,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               final reps = int.tryParse(_repsController.text);
               if (weight == null || reps == null || reps <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Please enter valid numbers"), duration: Duration(seconds: 1))
+                  SnackBar(
+                    content: Text(AppStrings.of(context).pleaseEnterValidNumbers),
+                    duration: const Duration(seconds: 1),
+                  )
                 );
                 return;
               }
@@ -840,7 +894,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               }
               Navigator.pop(context);
             },
-            child: const Text("SAVE", style: TextStyle(color: Color(0xFFBB86FC))),
+            child: Text(AppStrings.of(context).save, style: const TextStyle(color: Color(0xFFBB86FC))),
           ),
         ],
       ),
@@ -862,7 +916,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   void _showAddExtraExerciseDialog() {
     if (_planTitle == "Rest Day") {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a plan for today first"), duration: Duration(seconds: 1))
+        SnackBar(
+          content: Text(AppStrings.of(context).pleaseSelectPlanFirst),
+          duration: const Duration(seconds: 1),
+        )
       );
       return;
     }
@@ -894,7 +951,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "ADD EXTRA EXERCISE",
+                          AppStrings.of(context).addExtraExercise,
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.5),
                             fontSize: 12,
@@ -912,7 +969,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                     TextField(
                       controller: draft.nameController,
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: "Exercise name"),
+                      decoration: InputDecoration(
+                        labelText: AppStrings.of(context).exerciseName,
+                        labelStyle: const TextStyle(color: Colors.white70),
+                      ),
                       onChanged: (_) => setModalState(() {}),
                     ),
                     const SizedBox(height: 10),
@@ -923,7 +983,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.weightController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Weight (kg)"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).weightKg,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -932,7 +995,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.repsController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Reps"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).reps,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -941,7 +1007,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             controller: draft.setsController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: "Sets"),
+                            decoration: InputDecoration(
+                              labelText: AppStrings.of(context).sets,
+                              labelStyle: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                       ],
@@ -954,7 +1023,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           final exercise = draft.toExercise();
                           if (exercise == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Please complete all fields"), duration: Duration(seconds: 1))
+                              SnackBar(
+                                content: Text(AppStrings.of(context).completeExerciseFields),
+                                duration: const Duration(seconds: 1),
+                              )
                             );
                             return;
                           }
@@ -970,7 +1042,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text("ADD", style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: Text(AppStrings.of(context).add, style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -1032,9 +1104,25 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("TODAY'S SESSION", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, letterSpacing: 1.5, fontWeight: FontWeight.w600)),
+            Text(
+              AppStrings.of(context).todaysSession,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 12,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(_planTitle, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: -1.0)),
+            Text(
+              _planTitle == "Rest Day" ? AppStrings.of(context).restDay : _planTitle,
+              style: const TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -1.0,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
@@ -1051,7 +1139,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
             children: [
               Icon(Icons.bedtime, size: 64, color: Colors.white.withOpacity(0.2)),
               const SizedBox(height: 16),
-              Text("Rest & Recover", style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            Text(AppStrings.of(context).restRecover, style: TextStyle(color: Colors.white.withOpacity(0.5))),
             ],
           ),
         ),

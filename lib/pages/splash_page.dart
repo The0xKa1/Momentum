@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_entry.dart'; // 确保引用了你的主入口文件
+import '../services/app_strings.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -137,7 +138,7 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "KEEP MOVING FORWARD",
+                        AppStrings.of(context).splashSubtitle,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.4),
                           fontSize: 10,

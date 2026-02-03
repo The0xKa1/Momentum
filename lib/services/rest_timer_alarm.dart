@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'app_locale.dart';
 
 const String restTimerFinishChannelId = 'rest_timer_finish_v3';
 const String restTimerOngoingChannelId = 'rest_timer_ongoing';
@@ -77,6 +78,11 @@ Future<void> initRestTimerNotifications({
 }
 
 Future<void> showRestTimerFinishedNotification() async {
+  final locale = await AppLocaleController.getSavedLocale();
+  final isZh = locale?.languageCode == 'zh';
+  final title = isZh ? '休息结束！🏋️' : 'Rest Time Over! 🏋️';
+  final body = isZh ? '该进行下一组了！' : 'Time for your next set!';
+
   const androidDetails = AndroidNotificationDetails(
     restTimerFinishChannelId,
     'Rest Timer',
@@ -103,8 +109,8 @@ Future<void> showRestTimerFinishedNotification() async {
 
   await restTimerNotificationsPlugin.show(
     id: restTimerNotificationId,
-    title: 'Rest Time Over! 🏋️',
-    body: 'Time for your next set!',
+    title: title,
+    body: body,
     notificationDetails: notificationDetails,
   );
 }

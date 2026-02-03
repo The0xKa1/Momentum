@@ -1,5 +1,6 @@
 // lib/widgets/rest_timer_panel.dart
 import 'package:flutter/material.dart';
+import '../services/app_strings.dart';
 
 class RestTimerPanel extends StatelessWidget {
   final String timerString;
@@ -32,7 +33,10 @@ class RestTimerPanel extends StatelessWidget {
             children: [
               const Icon(Icons.timer_outlined, color: Color(0xFFBB86FC)),
               const SizedBox(width: 12),
-              Text("REST $timerString", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(
+                "${AppStrings.of(context).restLabel} $timerString",
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
               const Spacer(),
               _buildTimeButton("-10s", -10),
               const SizedBox(width: 8),

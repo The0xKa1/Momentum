@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   google_fonts: ^8.0.0   # 让你的文字排版瞬间高级
   intl: ^0.20.2
   # The following adds the Cupertino Icons font to your application.
