@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -98,22 +98,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
   void _initAudioPlayer() async {
     // 设置音频播放模式为循环
-    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-    
-    // 确保 AudioContext 设置允许在静音模式以外播放
-    await _audioPlayer.setAudioContext(AudioContext(
-      android: const AudioContextAndroid(
-        isSpeakerphoneOn: true,
-        stayAwake: true,
-        contentType: AndroidContentType.sonification,
-        usageType: AndroidUsageType.alarm,
-        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
-      ),
-      iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playback,
-        options: const {AVAudioSessionOptions.duckOthers, AVAudioSessionOptions.mixWithOthers},
-      ),
-    ));
+    await _audioPlayer.setLoopMode(LoopMode.one);
   }
 
   Future<void> _initNotifications() async {
@@ -165,6 +150,9 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       sound: RawResourceAndroidNotificationSound('alarm'),
       audioAttributesUsage: AudioAttributesUsage.alarm,
       enableVibration: true,
+      category: AndroidNotificationCategory.alarm,
+      fullScreenIntent: true,
+      visibility: NotificationVisibility.public,
       ongoing: false,
       autoCancel: true,
     );
@@ -316,14 +304,16 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     try {
       _isAlarmPlaying = true;
       // 尝试播放自定义提醒音（循环播放）
-      await _audioPlayer.play(AssetSource('sounds/alarm.mp3'));
+      await _audioPlayer.setAsset('assets/sounds/alarm.mp3');
+      await _audioPlayer.play();
     } catch (e) {
       print('播放自定义提醒音失败: $e，使用URL音频作为备选');
       // 如果音频文件不存在，使用在线提示音作为备选
       try {
-        await _audioPlayer.play(UrlSource(
-          'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'
-        ));
+        await _audioPlayer.setUrl(
+          'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
+        );
+        await _audioPlayer.play();
       } catch (e2) {
         print('播放在线提醒音也失败: $e2');
         _isAlarmPlaying = false;
@@ -342,29 +332,80 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     }
   }
 
-  void _adjustTime(int seconds) {
-    setState(() {
-      _restSeconds += seconds;
-      if (_restSeconds < 0) _restSeconds = 0;
-      if (_restSeconds > _totalRestSeconds) {
-        _totalRestSeconds = _restSeconds;
-      }
-    });
-
-    if (_restEndTime != null) {
-      final updatedEnd = _restEndTime!.add(Duration(seconds: seconds));
-      _restEndTime = updatedEnd.isBefore(DateTime.now()) ? DateTime.now() : updatedEnd;
-    }
-    
-    // 重新设置通知时间
-    if (_isResting && _restSeconds > 0) {
-      _requestRestNotificationSchedule();
-      _showOngoingRestNotification();
-    }
-  }
-
   DateTime _normalizeDate(DateTime date) {
     return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  Future<void> _promptRestTimeAndStart() async {
+    final strings = AppStrings.of(context);
+    const options = [30, 60, 90, 120, 180];
+    final customController = TextEditingController();
+
+    final selectedSeconds = await showDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          strings.selectRestTime,
+          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: options.map((seconds) {
+                return ElevatedButton(
+                  onPressed: () => Navigator.pop(context, seconds),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFBB86FC),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text(strings.restSeconds(seconds), style: const TextStyle(fontWeight: FontWeight.bold)),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: customController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: strings.restSeconds(60),
+                labelStyle: const TextStyle(color: Colors.white70),
+                hintText: strings.restSeconds(75),
+                hintStyle: const TextStyle(color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 0),
+            child: Text(strings.skipRest, style: const TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              final seconds = int.tryParse(customController.text);
+              if (seconds == null || seconds <= 0) {
+                return;
+              }
+              Navigator.pop(context, seconds);
+            },
+            child: Text(strings.save, style: const TextStyle(color: Color(0xFFBB86FC))),
+          ),
+        ],
+      ),
+    );
+
+    customController.dispose();
+    if (selectedSeconds != null && selectedSeconds > 0) {
+      _startRestTimer(seconds: selectedSeconds);
+    }
   }
 
   void _showRestFinishedDialog() {
@@ -737,7 +778,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   // --- 交互逻辑 ---
-  void _handleSetToggle(int exIndex, int setIndex) {
+  Future<void> _handleSetToggle(int exIndex, int setIndex) async {
     if (_isResting) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -748,15 +789,16 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       return;
     }
 
+    bool isFinishing = false;
     setState(() {
       var set = exercises[exIndex].sets[setIndex];
-      bool isFinishing = !set.isCompleted;
+      isFinishing = !set.isCompleted;
       set.isCompleted = isFinishing;
-      if (isFinishing) {
-        _startRestTimer(seconds: 90);
-      }
     });
     _persistCompletionState();
+    if (isFinishing) {
+      await _promptRestTimeAndStart();
+    }
   }
 
   void _showAddSetDialog(int exIndex) {
@@ -1088,7 +1130,6 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                   timerString: _timerString,
                   progress: _restSeconds / (_totalRestSeconds <= 0 ? 1 : _totalRestSeconds),
                   onSkip: _stopRestTimer,
-                  onAdjust: _adjustTime,
                 ),
               ),
           ],

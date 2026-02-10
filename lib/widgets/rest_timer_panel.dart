@@ -6,14 +6,12 @@ class RestTimerPanel extends StatelessWidget {
   final String timerString;
   final double progress;
   final VoidCallback onSkip;
-  final Function(int) onAdjust;
 
   const RestTimerPanel({
     super.key,
     required this.timerString,
     required this.progress,
     required this.onSkip,
-    required this.onAdjust,
   });
 
   @override
@@ -38,9 +36,6 @@ class RestTimerPanel extends StatelessWidget {
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const Spacer(),
-              _buildTimeButton("-10s", -10),
-              const SizedBox(width: 8),
-              _buildTimeButton("+30s", 30),
               const SizedBox(width: 12),
               IconButton(onPressed: onSkip, icon: const Icon(Icons.skip_next, color: Colors.white, size: 20)),
             ],
@@ -52,14 +47,4 @@ class RestTimerPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeButton(String label, int seconds) {
-    return InkWell(
-      onTap: () => onAdjust(seconds),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
-        child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-      ),
-    );
-  }
 }

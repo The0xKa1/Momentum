@@ -93,6 +93,9 @@ Future<void> showRestTimerFinishedNotification() async {
     sound: RawResourceAndroidNotificationSound('alarm'),
     audioAttributesUsage: AudioAttributesUsage.alarm,
     enableVibration: true,
+    category: AndroidNotificationCategory.alarm,
+    fullScreenIntent: true,
+    visibility: NotificationVisibility.public,
     ongoing: false,
     autoCancel: true,
   );
@@ -131,6 +134,8 @@ Future<void> scheduleRestTimerAlarm(DateTime endTime) async {
     restTimerAlarmCallback,
     wakeup: true,
     exact: true,
+    allowWhileIdle: true,
+    alarmClock: true,
     rescheduleOnReboot: true,
   );
 }

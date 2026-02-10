@@ -15,6 +15,9 @@ class AppStrings {
   String get plan => _isZh ? '计划' : 'Plan';
   String get diet => _isZh ? '饮食' : 'Diet';
   String get dietComingSoon => _isZh ? '饮食（即将上线）' : 'Diet Page (Coming Soon)';
+  String get settings => _isZh ? '设置' : 'Settings';
+  String get about => _isZh ? '关于' : 'About';
+  String get aboutStorageHint => _isZh ? '数据保存在本地，更新应用后仍会保留。' : 'Data is stored locally and will remain after updates.';
 
   String get planSettings => _isZh ? '计划设置' : 'Plan Settings';
   String get languageSetting => _isZh ? '语言' : 'Language';
@@ -68,6 +71,10 @@ class AppStrings {
   String get restTimeOverTitle => _isZh ? '休息结束！🏋️' : 'Rest Time Over! 🏋️';
   String get restTimeOverBody => _isZh ? '该进行下一组了！' : 'Time for your next set!';
   String get restLabel => _isZh ? '休息' : 'REST';
+  String get selectRestTime => _isZh ? '选择休息时间' : 'Select Rest Time';
+  String get skipRest => _isZh ? '跳过休息' : 'Skip Rest';
+
+  String restSeconds(int seconds) => _isZh ? '${seconds} 秒' : '${seconds}s';
 
   String get appTitle => 'Momentum';
   String get splashSubtitle => _isZh ? '持续向前' : 'KEEP MOVING FORWARD';

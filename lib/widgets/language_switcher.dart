@@ -15,54 +15,65 @@ class LanguageSwitcher extends StatelessWidget {
             : '${locale.languageCode}_${locale.countryCode ?? ''}';
         final strings = AppStrings.of(context);
 
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: currentValue,
-              dropdownColor: const Color(0xFF1E1E1E),
-              iconEnabledColor: Colors.white70,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              items: [
-                DropdownMenuItem(
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 220;
+            return SegmentedButton<String>(
+              segments: [
+                ButtonSegment(
                   value: 'system',
-                  child: Text(
-                    strings.followSystem,
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                  label: Text(isCompact ? 'A' : strings.followSystem),
                 ),
-                DropdownMenuItem(
+                ButtonSegment(
                   value: 'zh_CN',
-                  child: Text(
-                    strings.chineseSimplified,
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                  label: Text(isCompact ? '中' : strings.chineseSimplified),
                 ),
-                DropdownMenuItem(
+                ButtonSegment(
                   value: 'en_US',
-                  child: Text(
-                    strings.english,
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                  label: Text(isCompact ? 'EN' : strings.english),
                 ),
               ],
-              onChanged: (value) {
-                if (value == null) return;
-                if (value == 'system') {
+              selected: {currentValue},
+              onSelectionChanged: (value) {
+                if (value.isEmpty) return;
+                final selected = value.first;
+                if (selected == 'system') {
                   AppLocaleController.setLocale(null);
-                } else if (value == 'zh_CN') {
+                } else if (selected == 'zh_CN') {
                   AppLocaleController.setLocale(const Locale('zh', 'CN'));
-                } else if (value == 'en_US') {
+                } else if (selected == 'en_US') {
                   AppLocaleController.setLocale(const Locale('en', 'US'));
                 }
               },
-            ),
-          ),
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith<Color?>(
+                  (states) => states.contains(WidgetState.selected)
+                      ? const Color(0xFFBB86FC)
+                      : const Color(0xFF2C2C2C),
+                ),
+                foregroundColor: WidgetStateProperty.resolveWith<Color?>(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Colors.black
+                      : Colors.white,
+                ),
+                padding: WidgetStateProperty.all(
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                textStyle: WidgetStateProperty.all(
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                side: WidgetStateProperty.all(
+                  BorderSide(color: Colors.white.withOpacity(0.08)),
+                ),
+              ),
+            );
+          },
         );
       },
     );

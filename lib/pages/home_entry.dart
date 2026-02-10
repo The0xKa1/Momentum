@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'workout_page.dart'; // 引入训练页
 import 'plan_page.dart';
+import 'settings_page.dart';
 import '../services/app_strings.dart';
-import '../widgets/language_switcher.dart';
 
 class HomeEntryPage extends StatefulWidget {
   const HomeEntryPage({super.key});
@@ -25,12 +25,7 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
     _pages = [
       WorkoutPage(key: workoutKey),    // 0: 训练
       const PlanPage(),       // 1: 计划 (这里修改了！)
-      Center(child: Builder(
-        builder: (context) {
-          final strings = AppStrings.of(context);
-          return Text(strings.dietComingSoon);
-        },
-      )), // 2: 饮食
+      const SettingsPage(), // 2: 设置/关于
     ];
   }
 
@@ -42,7 +37,7 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
         children: _pages,
       ),
       
-      // 极简风格的底部导航栏 + 语言切换
+      // 极简风格的底部导航栏
       bottomNavigationBar: SafeArea(
         child: Container(
           color: const Color(0xFF1E1E1E),
@@ -74,15 +69,13 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
                       label: AppStrings.of(context).plan,
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.restaurant_menu_outlined),
-                      selectedIcon: Icon(Icons.restaurant_menu, color: Colors.black),
-                      label: AppStrings.of(context).diet,
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings, color: Colors.black),
+                      label: AppStrings.of(context).settings,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const LanguageSwitcher(),
             ],
           ),
         ),
