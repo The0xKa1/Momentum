@@ -45,6 +45,7 @@ dependencies:
   wakelock_plus: ^1.2.8
   android_alarm_manager_plus: ^5.0.0
   just_audio: ^0.10.5
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:

@@ -13,6 +13,7 @@ import '../models/workout_model.dart';
 import '../models/exercise_library.dart';
 import '../services/rest_timer_alarm.dart';
 import '../services/app_strings.dart';
+import '../services/rest_sound_settings.dart';
 
 // 引入拆分出的组件模块
 import '../widgets/exercise_card.dart';
@@ -303,20 +304,32 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     
     try {
       _isAlarmPlaying = true;
-      // 尝试播放自定义提醒音（循环播放）
-      await _audioPlayer.setAsset('assets/sounds/alarm.mp3');
+      final customPath = await RestSoundController.getSavedSoundPath();
+      if (customPath != null && customPath.isNotEmpty) {
+        // 尝试播放用户自定义铃声（循环播放）
+        await _audioPlayer.setFilePath(customPath);
+      } else {
+        // 播放默认提醒音（循环播放）
+        await _audioPlayer.setAsset('assets/sounds/alarm.mp3');
+      }
       await _audioPlayer.play();
     } catch (e) {
-      print('播放自定义提醒音失败: $e，使用URL音频作为备选');
-      // 如果音频文件不存在，使用在线提示音作为备选
+      print('播放提醒音失败: $e，尝试使用默认或在线提示音');
+      // 如果自定义失败，回退到默认音频
       try {
-        await _audioPlayer.setUrl(
-          'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
-        );
+        await _audioPlayer.setAsset('assets/sounds/alarm.mp3');
         await _audioPlayer.play();
       } catch (e2) {
-        print('播放在线提醒音也失败: $e2');
-        _isAlarmPlaying = false;
+        print('播放默认提醒音失败: $e2，尝试在线提示音');
+        try {
+          await _audioPlayer.setUrl(
+            'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
+          );
+          await _audioPlayer.play();
+        } catch (e3) {
+          print('播放在线提醒音也失败: $e3');
+          _isAlarmPlaying = false;
+        }
       }
     }
   }

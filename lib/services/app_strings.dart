@@ -76,6 +76,15 @@ class AppStrings {
 
   String restSeconds(int seconds) => _isZh ? '${seconds} 秒' : '${seconds}s';
 
+  String get soundSetting => _isZh ? '铃声' : 'Sound';
+  String get restSoundSetting => _isZh ? '休息铃声' : 'Rest Sound';
+  String get chooseSound => _isZh ? '选择铃声' : 'Choose Sound';
+  String get defaultSound => _isZh ? '默认铃声' : 'Default';
+  String get resetDefault => _isZh ? '恢复默认' : 'Reset';
+  String get soundSelected => _isZh ? '已选择' : 'Selected';
+  String get invalidSoundFile => _isZh ? '无法使用该音频文件' : 'Unable to use this audio file';
+  String get soundInAppOnly => _isZh ? '仅前台倒计时响铃' : 'Applies to in-app alarm only';
+
   String get appTitle => 'Momentum';
   String get splashSubtitle => _isZh ? '持续向前' : 'KEEP MOVING FORWARD';
 }
