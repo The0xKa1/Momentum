@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Momentum | 掌控身体的律动</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- AOS Animation -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+        h1, h2, h3, .serif-font {
+            font-family: 'Playfair Display', serif;
+        }
+        .glass-nav {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        /* Mobile Frame CSS */
+        .mobile-frame {
+            border: 8px solid #1e293b; /* Darker frame */
+            border-radius: 44px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            background: #0f172a;
+        }
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 28px;
+            background: #1e293b;
+            border-bottom-left-radius: 18px;
+            border-bottom-right-radius: 18px;
+            z-index: 30;
+        }
+        /* App UI Specifics */
+        .app-bg {
+            background-color: #121212; /* Material Dark Background */
+        }
+        .app-card {
+            background-color: #1e1e1e; /* Material Surface */
+        }
+        /* Decorative Background */
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.4;
+        }
+        /* Scrollbar hide for mobile mock */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- Ambient Background Blobs -->
+    <div class="blob bg-indigo-600 w-96 h-96 rounded-full top-0 left-0 -translate-x-1/2 -translate-y-1/2"></div>
+    <div class="blob bg-blue-600 w-[30rem] h-[30rem] rounded-full bottom-0 right-0 translate-x-1/3 translate-y-1/3"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 glass-nav transition-all duration-300" id="navbar">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <div class="flex items-center gap-2 cursor-pointer">
+                    <div class="w-8 h-8 rounded-lg overflow-hidden bg-slate-800 flex items-center justify-center">
+                        <img src="../assets/icon.png" alt="Momentum Logo" class="w-full h-full object-cover">
+                    </div>
+                    <span class="text-xl tracking-wide font-semibold">Momentum</span>
+                </div>
+
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex space-x-12">
+                    <a href="#philosophy" class="text-sm uppercase tracking-widest text-slate-400 hover:text-white transition-colors">哲学</a>
+                    <a href="#features" class="text-sm uppercase tracking-widest text-slate-400 hover:text-white transition-colors">功能</a>
+                    <a href="#showcase" class="text-sm uppercase tracking-widest text-slate-400 hover:text-white transition-colors">界面</a>
+                </div>
+
+                <!-- CTA -->
+                <a href="#" class="hidden md:block px-6 py-2 rounded-full border border-slate-600 text-sm hover:bg-white hover:text-slate-900 transition-all duration-300">
+                    下载 App
+                </a>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <i data-lucide="menu" class="w-6 h-6 text-slate-300"></i>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="relative min-h-screen flex items-center pt-20">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8 w-full grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            
+            <!-- Left: Text -->
+            <div data-aos="fade-up" data-aos-duration="1000">
+                <span class="inline-block py-1 px-3 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs tracking-widest uppercase mb-6">
+                    v1.0 正式发布
+                </span>
+                <h1 class="text-5xl lg:text-7xl leading-tight mb-8 gradient-text font-medium">
+                    训练，<br>
+                    <span class="italic font-light text-slate-400">本该如此纯粹。</span>
+                </h1>
+                <p class="text-lg text-slate-400 mb-10 max-w-md font-light leading-relaxed">
+                    Momentum 剔除一切干扰。专注于每一次举起，每一组休息，每一滴汗水。为你记录这一刻的势能，见证下一刻的蜕变。
+                </p>
+                
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button class="px-8 py-4 bg-white text-slate-900 rounded-full font-semibold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
+                        <i data-lucide="apple" class="w-5 h-5"></i> App Store
+                    </button>
+                    <button class="px-8 py-4 bg-transparent border border-slate-600 text-white rounded-full font-semibold hover:border-slate-400 transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="smartphone" class="w-5 h-5"></i> Android
+                    </button>
+                </div>
+                <!-- Removed statistics section as requested -->
+            </div>
+
+            <!-- Right: App Mockup (Updated to Match Real UI) -->
+            <div class="relative flex justify-center lg:justify-end" data-aos="fade-left" data-aos-duration="1200" data-aos-delay="200">
+                <!-- Decorative Circle behind phone -->
+                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] border border-slate-700/30 rounded-full animate-[spin_30s_linear_infinite]"></div>
+                
+                <div class="mobile-frame w-[320px] h-[650px] z-10 shadow-2xl">
+                    <div class="notch"></div>
+                    
+                    <!-- Status Bar Sim -->
+                    <div class="absolute top-0 w-full h-8 z-20 flex justify-between px-6 pt-3 text-[10px] text-white/90 font-medium">
+                        <span>9:41</span>
+                        <div class="flex gap-1.5">
+                            <i data-lucide="signal" class="w-3 h-3"></i>
+                            <i data-lucide="wifi" class="w-3 h-3"></i>
+                            <i data-lucide="battery-full" class="w-3 h-3"></i>
+                        </div>
+                    </div>
+
+                    <!-- App UI -->
+                    <div class="h-full w-full flex flex-col app-bg text-white pt-8 relative">
+
+                        <!-- Scrollable Content -->
+                        <div class="flex-1 overflow-y-auto no-scrollbar px-4 pt-6 pb-32">
+                            <!-- Header (from WorkoutPage) -->
+                            <div class="mb-6">
+                                <div class="text-[10px] uppercase tracking-[0.28em] text-white/50 font-semibold">今日训练</div>
+                                <div class="text-3xl font-semibold text-white mt-2">Chest Day</div>
+                            </div>
+
+                            <!-- Exercise Card 1 -->
+                            <div class="mb-5 app-card rounded-2xl p-4 border border-white/5 shadow-[0_10px_20px_rgba(0,0,0,0.3)]">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="text-base font-semibold text-white">Bench Press</div>
+                                    <i data-lucide="more-horizontal" class="w-4 h-4 text-white/40"></i>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Sets 1/3</div>
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Reps 34</div>
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Volume 1990</div>
+                                </div>
+                                <div class="mt-4 border-t border-white/5 pt-3">
+                                    <div class="flex text-[10px] uppercase text-white/40 font-semibold mb-2">
+                                        <div class="w-8 text-center">SET</div>
+                                        <div class="flex-1 text-center">KG</div>
+                                        <div class="flex-1 text-center">REPS</div>
+                                        <div class="w-8 text-center"></div>
+                                        <div class="w-7 text-center"></div>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-2">
+                                            <div class="w-7 h-7 rounded-md bg-white/5 text-green-400 font-bold text-xs flex items-center justify-center">1</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">60 kg</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">12 reps</div>
+                                            <i data-lucide="more-vertical" class="w-3 h-3 text-white/40"></i>
+                                            <div class="w-6 h-6 rounded-md bg-[#BB86FC] flex items-center justify-center">
+                                                <i data-lucide="check" class="w-3 h-3 text-black"></i>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2">
+                                            <div class="w-7 h-7 rounded-md bg-white/5 text-white/60 font-bold text-xs flex items-center justify-center">2</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">60 kg</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">12 reps</div>
+                                            <i data-lucide="more-vertical" class="w-3 h-3 text-white/40"></i>
+                                            <div class="w-6 h-6 rounded-md border border-white/20"></div>
+                                        </div>
+                                        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2">
+                                            <div class="w-7 h-7 rounded-md bg-white/5 text-white/60 font-bold text-xs flex items-center justify-center">3</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">55 kg</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">10 reps</div>
+                                            <i data-lucide="more-vertical" class="w-3 h-3 text-white/40"></i>
+                                            <div class="w-6 h-6 rounded-md border border-white/20"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3 flex items-center justify-center text-[11px] text-white/45">
+                                    <i data-lucide="plus" class="w-3 h-3 mr-1"></i> Add Set
+                                </div>
+                            </div>
+
+                            <!-- Exercise Card 2 -->
+                            <div class="mb-5 app-card rounded-2xl p-4 border border-white/5 shadow-[0_10px_20px_rgba(0,0,0,0.3)]">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="text-base font-semibold text-white">Barbell Squat</div>
+                                    <i data-lucide="more-horizontal" class="w-4 h-4 text-white/40"></i>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Sets 0/2</div>
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Reps 10</div>
+                                    <div class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-white/70 font-semibold">Volume 1000</div>
+                                </div>
+                                <div class="mt-4 border-t border-white/5 pt-3">
+                                    <div class="flex text-[10px] uppercase text-white/40 font-semibold mb-2">
+                                        <div class="w-8 text-center">SET</div>
+                                        <div class="flex-1 text-center">KG</div>
+                                        <div class="flex-1 text-center">REPS</div>
+                                        <div class="w-8 text-center"></div>
+                                        <div class="w-7 text-center"></div>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2">
+                                            <div class="w-7 h-7 rounded-md bg-white/5 text-white/60 font-bold text-xs flex items-center justify-center">1</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">100 kg</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">5 reps</div>
+                                            <i data-lucide="more-vertical" class="w-3 h-3 text-white/40"></i>
+                                            <div class="w-6 h-6 rounded-md border border-white/20"></div>
+                                        </div>
+                                        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2">
+                                            <div class="w-7 h-7 rounded-md bg-white/5 text-white/60 font-bold text-xs flex items-center justify-center">2</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">100 kg</div>
+                                            <div class="flex-1 h-7 rounded-lg bg-white/5 text-xs font-semibold text-white flex items-center justify-center">5 reps</div>
+                                            <i data-lucide="more-vertical" class="w-3 h-3 text-white/40"></i>
+                                            <div class="w-6 h-6 rounded-md border border-white/20"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3 flex items-center justify-center text-[11px] text-white/45">
+                                    <i data-lucide="plus" class="w-3 h-3 mr-1"></i> Add Set
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Rest Timer Panel (Matched to RestTimerPanel widget) -->
+                        <div class="absolute bottom-[88px] left-4 right-4 bg-[#2C2C2C] rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.45)]">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="timer" class="w-4 h-4 text-[#BB86FC]"></i>
+                                <div class="text-sm font-semibold text-white">休息 01:20</div>
+                                <div class="ml-auto">
+                                    <i data-lucide="skip-forward" class="w-4 h-4 text-white/80"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                <div class="h-full w-3/5 bg-[#BB86FC] rounded-full"></div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Navigation Bar (Matched to home_entry.dart) -->
+                        <div class="absolute bottom-0 w-full h-[72px] app-card border-t border-white/5 flex items-center px-3 pb-2 z-30">
+                            <div class="flex w-full justify-between px-2">
+                                <div class="flex flex-col items-center gap-1 w-16">
+                                    <div class="w-9 h-9 rounded-full bg-[#BB86FC] flex items-center justify-center">
+                                        <i data-lucide="dumbbell" class="w-5 h-5 text-black"></i>
+                                    </div>
+                                    <span class="text-[10px] font-medium text-white">训练</span>
+                                </div>
+                                <div class="flex flex-col items-center gap-1 w-16">
+                                    <i data-lucide="calendar" class="w-6 h-6 text-white/40"></i>
+                                    <span class="text-[10px] font-medium text-white/40">计划</span>
+                                </div>
+                                <div class="flex flex-col items-center gap-1 w-16">
+                                    <i data-lucide="settings" class="w-6 h-6 text-white/40"></i>
+                                    <span class="text-[10px] font-medium text-white/40">设置</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Philosophy Section -->
+    <section id="philosophy" class="py-32 relative">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <i data-lucide="quote" class="w-12 h-12 text-slate-700 mx-auto mb-8 opacity-50"></i>
+            <h2 class="text-3xl md:text-5xl serif-font italic text-slate-200 leading-snug mb-8" data-aos="fade-up">
+                "这不仅仅是关于数字的记录，<br>更是关于<span class="text-indigo-400">势能</span>的积累。"
+            </h2>
+            <p class="text-slate-400 text-lg font-light leading-relaxed max-w-2xl mx-auto" data-aos="fade-up" data-aos-delay="100">
+                Momentum 摒弃了花哨的社交功能和复杂的广告。我们相信，最好的训练App应该是隐形的——在你需要时出现，在你要专注时退后。这是属于你和钢铁之间的对话。
+            </p>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 bg-slate-900/50">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                
+                <!-- Feature 1 -->
+                <div class="glass-card p-10 rounded-3xl" data-aos="fade-up" data-aos-delay="0">
+                    <div class="w-14 h-14 bg-indigo-900/30 rounded-2xl flex items-center justify-center mb-8 text-indigo-400 border border-indigo-500/20">
+                        <i data-lucide="activity" class="w-7 h-7"></i>
+                    </div>
+                    <h3 class="text-2xl font-medium mb-4 text-white">训练记录</h3>
+                    <p class="text-slate-400 font-light leading-relaxed">
+                        记录组数、重量与次数，勾选完成状态，一键新增组数，专注于当下训练流程。
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="glass-card p-10 rounded-3xl" data-aos="fade-up" data-aos-delay="100">
+                    <div class="w-14 h-14 bg-cyan-900/30 rounded-2xl flex items-center justify-center mb-8 text-cyan-400 border border-cyan-500/20">
+                        <i data-lucide="bar-chart-2" class="w-7 h-7"></i>
+                    </div>
+                    <h3 class="text-2xl font-medium mb-4 text-white">休息计时</h3>
+                    <p class="text-slate-400 font-light leading-relaxed">
+                        内置休息计时器与提醒，倒计时结束自动提示，节奏清晰不被打断。
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="glass-card p-10 rounded-3xl" data-aos="fade-up" data-aos-delay="200">
+                    <div class="w-14 h-14 bg-purple-900/30 rounded-2xl flex items-center justify-center mb-8 text-purple-400 border border-purple-500/20">
+                        <i data-lucide="layers" class="w-7 h-7"></i>
+                    </div>
+                    <h3 class="text-2xl font-medium mb-4 text-white">自由定制</h3>
+                    <p class="text-slate-400 font-light leading-relaxed">
+                        创建属于你的训练计划，从分化训练到全身循环。灵活的休息计时器与自定义动作库。
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Large Image / Showcase Section -->
+    <section id="showcase" class="py-24 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900 z-10"></div>
+        <!-- Abstract background representation of code/structure -->
+        <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#4f46e5 1px, transparent 1px); background-size: 30px 30px;"></div>
+
+        <div class="max-w-7xl mx-auto px-6 lg:px-8 relative z-20">
+            <div class="flex flex-col lg:flex-row items-center gap-16">
+                <div class="lg:w-1/2">
+                    <img src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?ixlib=rb-4.0.3&auto=format&fit=crop&w=1470&q=80" alt="Gym Focus" class="rounded-2xl shadow-2xl grayscale hover:grayscale-0 transition-all duration-700 opacity-80 hover:opacity-100">
+                </div>
+                <div class="lg:w-1/2" data-aos="fade-left">
+                    <h2 class="text-4xl lg:text-5xl font-light mb-8">
+                        不仅仅是App，<br>
+                        <span class="serif-font italic text-indigo-300">是你的训练日记。</span>
+                    </h2>
+                    <ul class="space-y-6">
+                        <li class="flex items-start gap-4">
+                            <i data-lucide="check-circle" class="w-6 h-6 text-indigo-500 mt-1"></i>
+                            <div>
+                                <h4 class="text-xl font-medium text-white">无广告干扰</h4>
+                                <p class="text-slate-400 text-sm mt-1">我们承诺永久无全屏弹窗广告，只为你专注于当下。</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <i data-lucide="shield" class="w-6 h-6 text-indigo-500 mt-1"></i>
+                            <div>
+                                <h4 class="text-xl font-medium text-white">本地优先，隐私至上</h4>
+                                <p class="text-slate-400 text-sm mt-1">数据完全掌握在你手中。支持离线使用，无网络也能流畅记录。</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-900 pt-16 pb-8">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8 flex flex-col items-center">
+            
+            <div class="mb-8">
+                <span class="text-2xl font-bold tracking-tight text-white">Momentum</span>
+            </div>
+
+            <div class="flex space-x-8 mb-12">
+                <a href="https://github.com/The0xKa1/Momentum" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="github" class="w-5 h-5"></i></a>
+            </div>
+
+            <p class="text-slate-600 text-sm font-light">
+                &copy; Momentum App. Designed for those who keep moving.
+            </p>
+        </div>
+    </footer>
+
+    <!-- Initialize Scripts -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Initialize AOS Animation
+        AOS.init({
+            once: true,
+            offset: 100,
+            easing: 'ease-out-cubic',
+        });
+
+        // Navbar Blur Effect on Scroll
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 50) {
+                nav.classList.add('bg-slate-900/90');
+                nav.classList.remove('bg-transparent');
+            } else {
+                // Keep glass effect consistently or change as needed
+            }
+        });
+    </script>
+</body>
+</html>
