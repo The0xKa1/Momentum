@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  PROJECT_DIR: fitflow/fitflow
+  PROJECT_DIR: .
 
 jobs:
   android:
@@ -85,4 +85,5 @@ jobs:
           zip -r ../../../../../linux-release.zip .
       - uses: softprops/action-gh-release@v2
         with:
+
           files: linux-release.zip
