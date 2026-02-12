@@ -47,7 +47,6 @@ Momentum 使用 Flutter 构建，支持多平台编译和开发。
 
 - Flutter SDK（建议 3.x 及以上）
 - Dart SDK
-- Android Studio 或 Xcode（移动端编译）
 
 #### 本地运行
 
@@ -78,7 +77,7 @@ Momentum 使用 Flutter 构建，支持多平台编译和开发。
 - `lib/pages/`  
   核心页面视图（首页、训练页、计划页等）
 - `lib/widgets/`  
-  可复用的精美 UI 组件（如 exercise_card.dart, rest_timer_panel.dart）
+   UI 组件（如 exercise_card.dart, rest_timer_panel.dart）
 - `lib/services/`  
   核心业务逻辑与本地化服务
 
