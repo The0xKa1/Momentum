@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/app_strings.dart';
 import '../services/rest_sound_settings.dart';
 import '../widgets/language_switcher.dart';
@@ -10,6 +11,18 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
+    final Uri projectWebsite = Uri.parse('http://fitflow.the0xka1.cc');
+    Future<void> openProjectWebsite() async {
+      final ok = await launchUrl(projectWebsite, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(strings.openWebsiteFailed),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    }
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -103,6 +116,49 @@ class SettingsPage extends StatelessWidget {
                     style: TextStyle(color: Colors.white.withOpacity(0.6)),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _SectionTitle(title: strings.links),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: openProjectWebsite,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.public, color: Colors.white70),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            strings.projectWebsite,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            projectWebsite.toString(),
+                            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      strings.openWebsite,
+                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.white54),
+                  ],
+                ),
               ),
             ),
           ],

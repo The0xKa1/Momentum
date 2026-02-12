@@ -85,6 +85,11 @@ class AppStrings {
   String get invalidSoundFile => _isZh ? '无法使用该音频文件' : 'Unable to use this audio file';
   String get soundInAppOnly => _isZh ? '仅前台倒计时响铃' : 'Applies to in-app alarm only';
 
+  String get links => _isZh ? '链接' : 'Links';
+  String get projectWebsite => _isZh ? '项目网站' : 'Project Website';
+  String get openWebsite => _isZh ? '打开网站' : 'Open Website';
+  String get openWebsiteFailed => _isZh ? '无法打开网站' : 'Unable to open website';
+
   String get appTitle => 'Momentum';
   String get splashSubtitle => _isZh ? '持续向前' : 'KEEP MOVING FORWARD';
 }
