@@ -3,6 +3,7 @@ import 'workout_page.dart'; // 引入训练页
 import 'plan_page.dart';
 import 'settings_page.dart';
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 
 class HomeEntryPage extends StatefulWidget {
   const HomeEntryPage({super.key});
@@ -31,6 +32,8 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -40,7 +43,7 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
       // 极简风格的底部导航栏
       bottomNavigationBar: SafeArea(
         child: Container(
-          color: const Color(0xFF1E1E1E),
+          color: colors.surface,
           padding: const EdgeInsets.only(left: 8, right: 12, top: 6, bottom: 6),
           child: Row(
             children: [
@@ -55,22 +58,22 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
                       _currentIndex = index; // 刷新界面
                     });
                   },
-                  backgroundColor: const Color(0xFF1E1E1E), // 比背景稍亮一点
-                  indicatorColor: const Color(0xFFBB86FC),  // 选中时的气泡颜色
+                  backgroundColor: colors.surface,
+                  indicatorColor: theme.colorScheme.primary,
                   destinations: [
                     NavigationDestination(
                       icon: Icon(Icons.fitness_center_outlined),
-                      selectedIcon: Icon(Icons.fitness_center, color: Colors.black),
+                      selectedIcon: Icon(Icons.fitness_center, color: colors.accentForeground),
                       label: AppStrings.of(context).workout,
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.calendar_month_outlined),
-                      selectedIcon: Icon(Icons.calendar_month, color: Colors.black),
+                      selectedIcon: Icon(Icons.calendar_month, color: colors.accentForeground),
                       label: AppStrings.of(context).plan,
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings, color: Colors.black),
+                      selectedIcon: Icon(Icons.settings, color: colors.accentForeground),
                       label: AppStrings.of(context).settings,
                     ),
                   ],

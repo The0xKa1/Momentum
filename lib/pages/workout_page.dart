@@ -13,6 +13,7 @@ import '../models/workout_model.dart';
 import '../models/exercise_library.dart';
 import '../services/rest_timer_alarm.dart';
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 import '../services/rest_sound_settings.dart';
 
 // 引入拆分出的组件模块
@@ -62,7 +63,6 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   final TextEditingController _repsController = TextEditingController();
 
   void refreshData() {
-    print("Refreshing workout data...");
     _loadTodayPlan();
   }
 
@@ -141,22 +141,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     }
     
     // 设置通知在指定秒数后触发
-    const androidDetails = AndroidNotificationDetails(
-      restTimerFinishChannelId,
-      'Rest Timer',
-      channelDescription: 'Notifications for rest timer completion',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
-      audioAttributesUsage: AudioAttributesUsage.alarm,
-      enableVibration: true,
-      category: AndroidNotificationCategory.alarm,
-      fullScreenIntent: true,
-      visibility: NotificationVisibility.public,
-      ongoing: false,
-      autoCancel: true,
-    );
+    final androidDetails = await buildRestTimerFinishedAndroidDetails();
     
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
@@ -165,12 +150,13 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       interruptionLevel: InterruptionLevel.timeSensitive,
     );
     
-    const notificationDetails = NotificationDetails(
+    final notificationDetails = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
     
     // 在指定时间后显示通知
+    if (!mounted) return;
     final strings = AppStrings.of(context);
     await restTimerNotificationsPlugin.zonedSchedule(
       id: restTimerNotificationId,
@@ -190,6 +176,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   Future<void> _showOngoingRestNotification() async {
     if (defaultTargetPlatform != TargetPlatform.android || _restEndTime == null) return;
     await _notificationsInit;
+    if (!mounted) return;
+    final strings = AppStrings.of(context);
 
     final androidDetails = AndroidNotificationDetails(
       restTimerOngoingChannelId,
@@ -215,8 +203,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
     await restTimerNotificationsPlugin.show(
       id: restTimerOngoingNotificationId,
-      title: AppStrings.of(context).restingTitle,
-      body: AppStrings.of(context).countdownInProgress,
+      title: strings.restingTitle,
+      body: strings.countdownInProgress,
       notificationDetails: notificationDetails,
     );
   }
@@ -314,20 +302,20 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       }
       await _audioPlayer.play();
     } catch (e) {
-      print('播放提醒音失败: $e，尝试使用默认或在线提示音');
+      debugPrint('播放提醒音失败: $e，尝试使用默认或在线提示音');
       // 如果自定义失败，回退到默认音频
       try {
         await _audioPlayer.setAsset('assets/sounds/alarm.mp3');
         await _audioPlayer.play();
       } catch (e2) {
-        print('播放默认提醒音失败: $e2，尝试在线提示音');
+        debugPrint('播放默认提醒音失败: $e2，尝试在线提示音');
         try {
           await _audioPlayer.setUrl(
             'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
           );
           await _audioPlayer.play();
         } catch (e3) {
-          print('播放在线提醒音也失败: $e3');
+          debugPrint('播放在线提醒音也失败: $e3');
           _isAlarmPlaying = false;
         }
       }
@@ -341,7 +329,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       await _audioPlayer.stop();
       _isAlarmPlaying = false;
     } catch (e) {
-      print('停止提醒音失败: $e');
+      debugPrint('停止提醒音失败: $e');
     }
   }
 
@@ -351,6 +339,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
   Future<void> _promptRestTimeAndStart() async {
     final strings = AppStrings.of(context);
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     const options = [30, 60, 90, 120, 180];
     final customController = TextEditingController();
 
@@ -358,10 +348,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: colors.surface,
         title: Text(
           strings.selectRestTime,
-          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 20, fontWeight: FontWeight.bold),
+          style: TextStyle(color: theme.colorScheme.primary, fontSize: 20, fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -373,8 +363,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                 return ElevatedButton(
                   onPressed: () => Navigator.pop(context, seconds),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFBB86FC),
-                    foregroundColor: Colors.black,
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: colors.accentForeground,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
@@ -409,7 +399,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               }
               Navigator.pop(context, seconds);
             },
-            child: Text(strings.save, style: const TextStyle(color: Color(0xFFBB86FC))),
+            child: Text(strings.save, style: TextStyle(color: theme.colorScheme.primary)),
           ),
         ],
       ),
@@ -422,14 +412,16 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   void _showRestFinishedDialog() {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: colors.surface,
         title: Text(
           AppStrings.of(context).restFinished,
-          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 24, fontWeight: FontWeight.bold),
+          style: TextStyle(color: theme.colorScheme.primary, fontSize: 24, fontWeight: FontWeight.bold),
         ),
         content: Text(AppStrings.of(context).timeForNextSet, style: const TextStyle(fontSize: 16)),
         actions: [
@@ -440,7 +432,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
             },
             child: Text(
               AppStrings.of(context).gotIt,
-              style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(color: theme.colorScheme.primary, fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -642,6 +634,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
   /// 编辑当日额外动作中的某一项
   void _showEditExtraExerciseDialog(int extraIndex) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     if (extraIndex < 0 || extraIndex >= exercises.length - _planCount) return;
     final exercise = exercises[_planCount + extraIndex];
     final draft = _ExerciseDraft(
@@ -654,7 +648,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -676,13 +670,13 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          AppStrings.of(context).editExtraExercise,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 12,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.bold,
+                          Text(
+                            AppStrings.of(context).editExtraExercise,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 12,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.bold,
                           ),
                         ),
                         IconButton(
@@ -767,11 +761,12 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
                             await _loadTodayPlan();
                           }
-                          if (mounted) Navigator.pop(context);
+                          if (!mounted) return;
+                          Navigator.pop(this.context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFBB86FC),
-                          foregroundColor: Colors.black,
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: colors.accentForeground,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -815,6 +810,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   void _showAddSetDialog(int exIndex) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     final lastSet = exercises[exIndex].sets.isNotEmpty ? exercises[exIndex].sets.last : null;
     _weightController.text = lastSet?.weight.toString() ?? "0";
     _repsController.text = lastSet?.reps.toString() ?? "10";
@@ -822,10 +819,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: colors.surface,
         title: Text(
           AppStrings.of(context).addSet,
-          style: const TextStyle(color: Color(0xFFBB86FC)),
+          style: TextStyle(color: theme.colorScheme.primary),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -877,7 +874,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               _persistCompletionState();
               Navigator.pop(context);
             },
-            child: Text(AppStrings.of(context).add, style: const TextStyle(color: Color(0xFFBB86FC))),
+            child: Text(AppStrings.of(context).add, style: TextStyle(color: theme.colorScheme.primary)),
           ),
         ],
       ),
@@ -885,6 +882,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   void _showEditSetDialog(int exIndex, int setIndex) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     if (exIndex < 0 || exIndex >= exercises.length) return;
     if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
     final set = exercises[exIndex].sets[setIndex];
@@ -894,10 +893,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: colors.surface,
         title: Text(
           AppStrings.of(context).editSet,
-          style: const TextStyle(color: Color(0xFFBB86FC)),
+          style: TextStyle(color: theme.colorScheme.primary),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -949,7 +948,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               }
               Navigator.pop(context);
             },
-            child: Text(AppStrings.of(context).save, style: const TextStyle(color: Color(0xFFBB86FC))),
+            child: Text(AppStrings.of(context).save, style: TextStyle(color: theme.colorScheme.primary)),
           ),
         ],
       ),
@@ -969,6 +968,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   void _showAddExtraExerciseDialog() {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     if (_planTitle == "Rest Day") {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -983,7 +984,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1005,13 +1006,13 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          AppStrings.of(context).addExtraExercise,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 12,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.bold,
+                          Text(
+                            AppStrings.of(context).addExtraExercise,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 12,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.bold,
                           ),
                         ),
                         IconButton(
@@ -1087,11 +1088,12 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           }
                           await _appendDailyExtraExercises([exercise]);
                           await _loadTodayPlan();
-                          if (mounted) Navigator.pop(context);
+                          if (!mounted) return;
+                          Navigator.pop(this.context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFBB86FC),
-                          foregroundColor: Colors.black,
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: colors.accentForeground,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -1121,7 +1123,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       floatingActionButton: _isResting ? null : FloatingActionButton(
         onPressed: _showAddExtraExerciseDialog,
         backgroundColor: Theme.of(context).primaryColor,
-        child: const Icon(Icons.add, color: Colors.black),
+        child: Icon(Icons.add, color: context.appColors.accentForeground),
       ),
       body: SafeArea(
         child: Stack(
@@ -1161,7 +1163,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
             Text(
               AppStrings.of(context).todaysSession,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 12,
                 letterSpacing: 1.5,
                 fontWeight: FontWeight.w600,
@@ -1191,9 +1193,9 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.bedtime, size: 64, color: Colors.white.withOpacity(0.2)),
+              Icon(Icons.bedtime, size: 64, color: Colors.white.withValues(alpha: 0.2)),
               const SizedBox(height: 16),
-            Text(AppStrings.of(context).restRecover, style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            Text(AppStrings.of(context).restRecover, style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
             ],
           ),
         ),

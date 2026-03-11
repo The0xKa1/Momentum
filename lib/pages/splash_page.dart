@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_entry.dart'; // 确保引用了你的主入口文件
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -98,8 +99,9 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Scaffold(
-      backgroundColor: const Color(0xFF121212), // 极深的背景色
+      backgroundColor: colors.background,
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
@@ -140,7 +142,7 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
                       Text(
                         AppStrings.of(context).splashSubtitle,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
+                          color: Colors.white.withValues(alpha: 0.4),
                           fontSize: 10,
                           letterSpacing: 2.0,
                         ),
@@ -158,15 +160,16 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
   // 辅助方法：画柱子
   Widget _buildBar(double height, double opacity) {
+    final primary = Theme.of(context).colorScheme.primary;
     return Container(
       width: 20, // 柱子宽度
       height: height, // 高度是动态的
       decoration: BoxDecoration(
-        color: const Color(0xFFBB86FC).withOpacity(opacity),
+        color: primary.withValues(alpha: opacity),
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFBB86FC).withOpacity(0.3),
+            color: primary.withValues(alpha: 0.3),
             blurRadius: 10,
             spreadRadius: 1,
           )

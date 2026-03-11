@@ -4,8 +4,8 @@ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'app_locale.dart';
+import 'rest_sound_settings.dart';
 
-const String restTimerFinishChannelId = 'rest_timer_finish_v3';
 const String restTimerOngoingChannelId = 'rest_timer_ongoing';
 const int restTimerNotificationId = 1001;
 const int restTimerOngoingNotificationId = 1002;
@@ -15,6 +15,46 @@ final FlutterLocalNotificationsPlugin restTimerNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 AndroidFlutterLocalNotificationsPlugin? _androidNotifications;
+
+Future<String> ensureRestTimerFinishChannel() async {
+  final soundPath = await RestSoundController.getSavedSoundPath();
+  final channelId = RestSoundController.getAndroidChannelId(soundPath);
+  final sound = RestSoundController.getAndroidNotificationSound(soundPath);
+
+  await _androidNotifications?.createNotificationChannel(
+    AndroidNotificationChannel(
+      channelId,
+      'Rest Timer Finish',
+      description: 'Notifications when rest timer finishes',
+      importance: Importance.max,
+      enableVibration: true,
+      playSound: true,
+      sound: sound,
+    ),
+  );
+  return channelId;
+}
+
+Future<AndroidNotificationDetails> buildRestTimerFinishedAndroidDetails() async {
+  final soundPath = await RestSoundController.getSavedSoundPath();
+  final channelId = await ensureRestTimerFinishChannel();
+  return AndroidNotificationDetails(
+    channelId,
+    'Rest Timer',
+    channelDescription: 'Notifications for rest timer completion',
+    importance: Importance.max,
+    priority: Priority.high,
+    playSound: true,
+    sound: RestSoundController.getAndroidNotificationSound(soundPath),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    enableVibration: true,
+    category: AndroidNotificationCategory.alarm,
+    fullScreenIntent: true,
+    visibility: NotificationVisibility.public,
+    ongoing: false,
+    autoCancel: true,
+  );
+}
 
 Future<void> initRestTimerNotifications({
   DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
@@ -46,17 +86,7 @@ Future<void> initRestTimerNotifications({
     await _androidNotifications?.requestNotificationsPermission();
   }
 
-  await _androidNotifications?.createNotificationChannel(
-    const AndroidNotificationChannel(
-      restTimerFinishChannelId,
-      'Rest Timer Finish',
-      description: 'Notifications when rest timer finishes',
-      importance: Importance.max,
-      enableVibration: true,
-      playSound: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
-    ),
-  );
+  await ensureRestTimerFinishChannel();
   await _androidNotifications?.createNotificationChannel(
     const AndroidNotificationChannel(
       restTimerOngoingChannelId,
@@ -83,29 +113,14 @@ Future<void> showRestTimerFinishedNotification() async {
   final title = isZh ? '休息结束！🏋️' : 'Rest Time Over! 🏋️';
   final body = isZh ? '该进行下一组了！' : 'Time for your next set!';
 
-  const androidDetails = AndroidNotificationDetails(
-    restTimerFinishChannelId,
-    'Rest Timer',
-    channelDescription: 'Notifications for rest timer completion',
-    importance: Importance.max,
-    priority: Priority.high,
-    playSound: true,
-    sound: RawResourceAndroidNotificationSound('alarm'),
-    audioAttributesUsage: AudioAttributesUsage.alarm,
-    enableVibration: true,
-    category: AndroidNotificationCategory.alarm,
-    fullScreenIntent: true,
-    visibility: NotificationVisibility.public,
-    ongoing: false,
-    autoCancel: true,
-  );
+  final androidDetails = await buildRestTimerFinishedAndroidDetails();
   const iosDetails = DarwinNotificationDetails(
     presentAlert: true,
     presentBadge: true,
     presentSound: true,
     interruptionLevel: InterruptionLevel.timeSensitive,
   );
-  const notificationDetails = NotificationDetails(
+  final notificationDetails = NotificationDetails(
     android: androidDetails,
     iOS: iosDetails,
   );

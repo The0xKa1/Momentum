@@ -44,6 +44,8 @@ class AppStrings {
   String get noPlanTemplatesYet => _isZh ? '暂无计划模板' : 'No plan templates yet.';
   String get goToPlanSettings => _isZh ? '去计划设置' : 'Go to Plan Settings';
   String get schedule => _isZh ? '日程' : 'SCHEDULE';
+  String get planDetails => _isZh ? '计划详情' : 'PLAN DETAILS';
+  String get noPlanDetails => _isZh ? '该日期暂无可展示的具体动作' : 'No detailed exercises for this day';
   String get restDay => _isZh ? '休息日' : 'Rest Day';
   String get planDeleted => _isZh ? '计划已删除' : 'Plan deleted';
   String get greatJob => _isZh ? '干得漂亮！' : 'Great job!';
@@ -74,7 +76,7 @@ class AppStrings {
   String get selectRestTime => _isZh ? '选择休息时间' : 'Select Rest Time';
   String get skipRest => _isZh ? '跳过休息' : 'Skip Rest';
 
-  String restSeconds(int seconds) => _isZh ? '${seconds} 秒' : '${seconds}s';
+  String restSeconds(int seconds) => _isZh ? '$seconds 秒' : '${seconds}s';
 
   String get soundSetting => _isZh ? '铃声' : 'Sound';
   String get restSoundSetting => _isZh ? '休息铃声' : 'Rest Sound';
@@ -83,7 +85,28 @@ class AppStrings {
   String get resetDefault => _isZh ? '恢复默认' : 'Reset';
   String get soundSelected => _isZh ? '已选择' : 'Selected';
   String get invalidSoundFile => _isZh ? '无法使用该音频文件' : 'Unable to use this audio file';
-  String get soundInAppOnly => _isZh ? '仅前台倒计时响铃' : 'Applies to in-app alarm only';
+  String get soundForForegroundAndBackground => _isZh ? '前台倒计时与后台提醒都会使用该铃声' : 'Used for both in-app and background rest alarms';
+
+  String get appearanceSetting => _isZh ? '配色' : 'Appearance';
+  String get themeSchemeSetting => _isZh ? '配色方案' : 'Color Scheme';
+  String get backgroundImageSetting => _isZh ? '背景图片' : 'Background Image';
+  String get chooseBackgroundImage => _isZh ? '选择背景图' : 'Choose Image';
+  String get clearBackgroundImage => _isZh ? '清除背景图' : 'Clear Image';
+  String get noBackgroundImage => _isZh ? '未设置背景图' : 'No background image';
+  String get backgroundImageSelected => _isZh ? '当前背景' : 'Current Background';
+  String get backgroundOverlay => _isZh ? '遮罩强度' : 'Overlay';
+  String get backgroundBlur => _isZh ? '模糊程度' : 'Blur';
+  String get backgroundImageHint => _isZh ? '背景图会在全局生效，并自动叠加深色遮罩以保证可读性' : 'The image is applied globally with a dark overlay for readability';
+  String get customThemeScheme => _isZh ? '自定义方案' : 'Custom Scheme';
+  String get accentColor => _isZh ? '强调色' : 'Accent';
+  String get backgroundColor => _isZh ? '背景色' : 'Background';
+  String get surfaceColor => _isZh ? '卡片色' : 'Surface';
+  String get editColor => _isZh ? '编辑颜色' : 'Edit Color';
+  String get saveThemeScheme => _isZh ? '保存配色' : 'Save Scheme';
+  String get presetMidnightOrchid => _isZh ? '午夜紫' : 'Midnight Orchid';
+  String get presetEmberCore => _isZh ? '余烬橙' : 'Ember Core';
+  String get presetGlacierMint => _isZh ? '冰川薄荷' : 'Glacier Mint';
+  String get presetVoltLime => _isZh ? '电光青柠' : 'Volt Lime';
 
   String get links => _isZh ? '链接' : 'Links';
   String get projectWebsite => _isZh ? '项目网站' : 'Project Website';

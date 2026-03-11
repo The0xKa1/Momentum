@@ -2,8 +2,10 @@ import 'dart:convert'; // 用于把数据转换成 JSON 字符串
 import 'package:shared_preferences/shared_preferences.dart'; // 硬盘存储工具
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../models/workout_model.dart';
 import 'plan_settings_page.dart';
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -13,6 +15,10 @@ class PlanPage extends StatefulWidget {
 }
 
 class _PlanPageState extends State<PlanPage> {
+  static const String _prefsPlanTemplatesKey = "plan_templates";
+  static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
+  static const String _prefsHiddenPlanKey = "hidden_plan_today";
+
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -26,6 +32,7 @@ class _PlanPageState extends State<PlanPage> {
   };
   final Map<DateTime, Set<String>> _completedByDate = {};
   List<String> _templateNames = [];
+  List<Exercise> _selectedDayExercises = [];
 
   @override
   void dispose() {
@@ -39,6 +46,7 @@ class _PlanPageState extends State<PlanPage> {
     _loadEventsFromPrefs(); // <--- App 启动时加载数据
     _loadCompletedFromPrefs();
     _loadTemplatesFromPrefs();
+    _loadSelectedDayDetails();
   }
 
   List<String> _getEventsForDay(DateTime day) {
@@ -110,6 +118,7 @@ class _PlanPageState extends State<PlanPage> {
         _events[_normalizeDate(dateKey)] = plans;
       });
     });
+    _loadSelectedDayDetails();
   }
 
   Future<void> _saveCompletedToPrefs() async {
@@ -139,7 +148,7 @@ class _PlanPageState extends State<PlanPage> {
 
   Future<void> _loadTemplatesFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('plan_templates');
+    final jsonString = prefs.getString(_prefsPlanTemplatesKey);
     if (jsonString == null) {
       setState(() {
         _templateNames = [];
@@ -152,11 +161,80 @@ class _PlanPageState extends State<PlanPage> {
       _templateNames = decodedMap.keys.toList();
     });
   }
+
+  List<Exercise> _parseExercises(List<dynamic> rawExercises) {
+    return rawExercises.map((raw) {
+      final data = Map<String, dynamic>.from(raw as Map);
+      final name = (data['name'] ?? '').toString();
+      final rawSets = List<dynamic>.from(data['sets'] ?? []);
+      final sets = rawSets.map((rawSet) {
+        final setData = Map<String, dynamic>.from(rawSet as Map);
+        return WorkoutSet(
+          weight: (setData['weight'] ?? 0).toDouble(),
+          reps: (setData['reps'] ?? 0).toInt(),
+        );
+      }).toList();
+      return Exercise(name: name, sets: sets);
+    }).toList();
+  }
+
+  Future<void> _loadSelectedDayDetails() async {
+    final day = _selectedDay ?? _focusedDay;
+    final dateKey = _normalizeDate(day);
+    final planNames = _events[dateKey] ?? [];
+    if (planNames.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _selectedDayExercises = [];
+      });
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final templateString = prefs.getString(_prefsPlanTemplatesKey);
+    final extrasString = prefs.getString(_prefsDailyExtrasKey);
+    final hiddenString = prefs.getString(_prefsHiddenPlanKey);
+    final key = dateKey.toIso8601String();
+    final planName = planNames.first;
+
+    List<Exercise> planExercises = [];
+    if (templateString != null) {
+      final templates = Map<String, dynamic>.from(json.decode(templateString));
+      if (templates.containsKey(planName)) {
+        planExercises = _parseExercises(List<dynamic>.from(templates[planName] ?? []));
+      }
+    }
+
+    final hiddenNames = <String>{};
+    if (hiddenString != null) {
+      final hiddenMap = Map<String, dynamic>.from(json.decode(hiddenString));
+      final hiddenList = hiddenMap[key];
+      if (hiddenList is List) {
+        hiddenNames.addAll(hiddenList.map((e) => e.toString()));
+      }
+    }
+    planExercises = planExercises.where((exercise) => !hiddenNames.contains(exercise.name)).toList();
+
+    List<Exercise> extraExercises = [];
+    if (extrasString != null) {
+      final extrasMap = Map<String, dynamic>.from(json.decode(extrasString));
+      final rawExtras = extrasMap[key];
+      if (rawExtras is List) {
+        extraExercises = _parseExercises(List<dynamic>.from(rawExtras));
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _selectedDayExercises = [...planExercises, ...extraExercises];
+    });
+  }
   void _showAddEventDialog() {
+    final colors = context.appColors;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -177,8 +255,8 @@ class _PlanPageState extends State<PlanPage> {
                 children: [
                   Text(
                     AppStrings.of(context).selectPlan,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                          style: TextStyle(
+                      color: colors.subtleText,
                       fontSize: 12,
                       letterSpacing: 1.5,
                       fontWeight: FontWeight.bold,
@@ -197,7 +275,7 @@ class _PlanPageState extends State<PlanPage> {
                   children: [
                     Text(
                       AppStrings.of(context).noPlanTemplatesYet,
-                      style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                      style: TextStyle(color: colors.mutedText),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
@@ -210,6 +288,7 @@ class _PlanPageState extends State<PlanPage> {
                             MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
                           );
                           _loadTemplatesFromPrefs();
+                          _loadSelectedDayDetails();
                         },
                         child: Text(AppStrings.of(context).goToPlanSettings),
                       ),
@@ -250,6 +329,7 @@ class _PlanPageState extends State<PlanPage> {
 
     _saveEventsToPrefs();
     _saveCompletedToPrefs();
+    _loadSelectedDayDetails();
   }
 
   void _togglePlanCompleted(String planName) {
@@ -276,21 +356,21 @@ class _PlanPageState extends State<PlanPage> {
         context: context,
         builder: (context) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
+            backgroundColor: context.appColors.surface,
             title: Text(
               AppStrings.of(context).greatJob,
               style: const TextStyle(color: Colors.white),
             ),
             content: Text(
               AppStrings.of(context).completedAllPlans,
-              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text(
                   AppStrings.of(context).ok,
-                  style: const TextStyle(color: Color(0xFFBB86FC)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.primary),
                 ),
               ),
             ],
@@ -302,6 +382,8 @@ class _PlanPageState extends State<PlanPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -315,8 +397,8 @@ class _PlanPageState extends State<PlanPage> {
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1E1E1E), // 底部深灰色背景
+                decoration: BoxDecoration(
+                  color: colors.surface,
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(30),
                     topRight: Radius.circular(30),
@@ -331,7 +413,7 @@ class _PlanPageState extends State<PlanPage> {
                         Text(
                           AppStrings.of(context).schedule,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
+                            color: colors.subtleText,
                             fontSize: 12,
                             letterSpacing: 1.5,
                             fontWeight: FontWeight.bold,
@@ -345,12 +427,36 @@ class _PlanPageState extends State<PlanPage> {
                               MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
                             );
                             _loadTemplatesFromPrefs();
+                            _loadSelectedDayDetails();
                           },
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildEventList(),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 720;
+                          if (isNarrow) {
+                            return Column(
+                              children: [
+                                Expanded(child: _buildEventList()),
+                                const SizedBox(height: 16),
+                                Expanded(child: _buildPlanDetails()),
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: _buildEventList()),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildPlanDetails()),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -362,12 +468,14 @@ class _PlanPageState extends State<PlanPage> {
       // ... Scaffold 的其他部分 ...
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddEventDialog, // <--- 修改这里，调用新方法
-        backgroundColor: const Color(0xFFBB86FC),
-        child: const Icon(Icons.add, color: Colors.black), // 图标改成 + 号更合适
+        backgroundColor: theme.colorScheme.primary,
+        child: Icon(Icons.add, color: colors.accentForeground),
       ),
     );
   }
 Widget _buildCalendar() {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     return TableCalendar(
       firstDay: DateTime.utc(2023, 10, 16),
       lastDay: DateTime.utc(2030, 3, 14),
@@ -380,20 +488,20 @@ Widget _buildCalendar() {
         // 1. 文字颜色设置
         defaultTextStyle: const TextStyle(color: Colors.white),
         weekendTextStyle: const TextStyle(color: Colors.grey),
-        outsideTextStyle: TextStyle(color: Colors.white.withOpacity(0.2)), // 非本月日期颜色
+        outsideTextStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)), // 非本月日期颜色
         
         // 2. 装饰样式
         todayDecoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
-        selectedDecoration: const BoxDecoration(
-          color: Color(0xFFBB86FC), // 你的强调色
+        selectedDecoration: BoxDecoration(
+          color: theme.colorScheme.primary,
           shape: BoxShape.circle,
         ),
-        selectedTextStyle: const TextStyle(
-          color: Colors.black, 
-          fontWeight: FontWeight.bold
+        selectedTextStyle: TextStyle(
+          color: colors.accentForeground,
+          fontWeight: FontWeight.bold,
         ),
         markerDecoration: const BoxDecoration(
           color: Colors.grey,
@@ -430,6 +538,7 @@ Widget _buildCalendar() {
           _selectedDay = selectedDay;
           _focusedDay = focusedDay;
         });
+        _loadSelectedDayDetails();
       },
       onFormatChanged: (format) {
         setState(() {
@@ -442,7 +551,7 @@ Widget _buildCalendar() {
         markerBuilder: (context, day, events) {
           if (events.isEmpty) return null;
           final isCompleted = _isDayCompleted(day);
-          final markerColor = isCompleted ? const Color(0xFF4CAF50) : Colors.grey;
+          final markerColor = isCompleted ? const Color(0xFF4CAF50) : colors.subtleText;
           final count = events.length > 3 ? 3 : events.length;
           return Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -465,6 +574,8 @@ Widget _buildCalendar() {
   }
 
   Widget _buildEventList() {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     final events = _getEventsForDay(_selectedDay!);
 
     if (events.isEmpty) {
@@ -473,12 +584,12 @@ Widget _buildCalendar() {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 40),
-            Icon(Icons.hotel_class, size: 48, color: Colors.white.withOpacity(0.2)),
+            Icon(Icons.hotel_class, size: 48, color: Colors.white.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
                 Text(
                   AppStrings.of(context).restDay,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 18,
               ),
             ),
@@ -505,7 +616,7 @@ Widget _buildCalendar() {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.only(right: 20),
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.8),
+              color: Colors.red.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.delete, color: Colors.white),
@@ -531,13 +642,14 @@ Widget _buildCalendar() {
             // 2. 立即同步到硬盘
             _saveEventsToPrefs();
             _saveCompletedToPrefs();
+            _loadSelectedDayDetails();
 
             // 3. 提示用户
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(AppStrings.of(context).planDeleted),
                 duration: const Duration(seconds: 1),
-                backgroundColor: const Color(0xFF1E1E1E),
+                backgroundColor: colors.surface,
               ),
             );
           },
@@ -549,9 +661,9 @@ Widget _buildCalendar() {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                border: Border.all(color: colors.border),
               ),
               child: Row(
                 children: [
@@ -559,7 +671,7 @@ Widget _buildCalendar() {
                     width: 4,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isCompleted ? const Color(0xFF4CAF50) : const Color(0xFFBB86FC),
+                      color: isCompleted ? const Color(0xFF4CAF50) : theme.colorScheme.primary,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -577,7 +689,7 @@ Widget _buildCalendar() {
                   ),
                   Icon(
                     isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: isCompleted ? const Color(0xFF4CAF50) : Colors.white.withOpacity(0.2),
+                    color: isCompleted ? const Color(0xFF4CAF50) : Colors.white.withValues(alpha: 0.2),
                     size: 18,
                   ),
                 ],
@@ -586,6 +698,102 @@ Widget _buildCalendar() {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPlanDetails() {
+    final colors = context.appColors;
+    final strings = AppStrings.of(context);
+    final selectedDay = _selectedDay;
+    final planName = selectedDay == null ? null : (_getEventsForDay(selectedDay).isEmpty ? null : _getEventsForDay(selectedDay).first);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surfaceElevated,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strings.planDetails,
+            style: TextStyle(
+              color: colors.subtleText,
+              fontSize: 12,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (planName != null)
+            Text(
+              planName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          if (planName != null) const SizedBox(height: 12),
+          Expanded(
+            child: _selectedDayExercises.isEmpty
+                ? Center(
+                    child: Text(
+                      planName == null ? strings.restDay : strings.noPlanDetails,
+                      style: TextStyle(color: colors.subtleText),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _selectedDayExercises.length,
+                    separatorBuilder: (context, index) => Divider(color: colors.border, height: 20),
+                    itemBuilder: (context, index) {
+                      final exercise = _selectedDayExercises[index];
+                      final totalSets = exercise.sets.length;
+                      final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            exercise.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
+                            style: TextStyle(color: colors.subtleText, fontSize: 12),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: exercise.sets.map((set) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: colors.softFill,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${set.weight} kg x ${set.reps}',
+                                  style: TextStyle(color: colors.mutedText, fontSize: 12),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

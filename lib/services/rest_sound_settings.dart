@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RestSoundController {
@@ -25,5 +26,19 @@ class RestSoundController {
     }
     await prefs.setString(_prefsRestSoundKey, path);
     restSoundPath.value = path;
+  }
+
+  static AndroidNotificationSound getAndroidNotificationSound(String? path) {
+    if (path == null || path.isEmpty) {
+      return const RawResourceAndroidNotificationSound('alarm');
+    }
+    return UriAndroidNotificationSound(Uri.file(path).toString());
+  }
+
+  static String getAndroidChannelId(String? path) {
+    if (path == null || path.isEmpty) {
+      return 'rest_timer_finish_default';
+    }
+    return 'rest_timer_finish_${path.hashCode.abs()}';
   }
 }

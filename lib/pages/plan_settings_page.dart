@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 import '../models/workout_model.dart';
 
 class PlanSettingsPage extends StatefulWidget {
@@ -71,6 +72,8 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
   }
 
   void _openEditPlan({String? existingName, List<Exercise>? existingExercises}) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     final TextEditingController nameController =
         TextEditingController(text: existingName ?? "");
     final List<_ExerciseDraft> drafts = (existingExercises ?? [])
@@ -81,7 +84,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -107,7 +110,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                         Text(
                           existingName == null ? strings.newPlan : strings.editPlan,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
+                            color: colors.subtleText,
                             fontSize: 12,
                             letterSpacing: 1.5,
                             fontWeight: FontWeight.bold,
@@ -133,9 +136,9 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          border: Border.all(color: colors.border),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -146,7 +149,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                                 Text(
                                   "${strings.exercise} ${index + 1}",
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: colors.subtleText,
                                     fontSize: 12,
                                     letterSpacing: 1.2,
                                     fontWeight: FontWeight.bold,
@@ -213,8 +216,8 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                           });
                         },
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFFBB86FC),
-                          side: const BorderSide(color: Color(0xFFBB86FC)),
+                          foregroundColor: theme.colorScheme.primary,
+                          side: BorderSide(color: theme.colorScheme.primary),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -252,11 +255,12 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                             _templates[name] = planExercises;
                           });
                           await _saveTemplates();
-                          if (mounted) Navigator.pop(context);
+                          if (!mounted) return;
+                          Navigator.pop(this.context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFBB86FC),
-                          foregroundColor: Colors.black,
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: colors.accentForeground,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -289,14 +293,16 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(AppStrings.of(context).planSettings),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditPlan(),
-        backgroundColor: const Color(0xFFBB86FC),
-        child: const Icon(Icons.add, color: Colors.black),
+        backgroundColor: theme.colorScheme.primary,
+        child: Icon(Icons.add, color: colors.accentForeground),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -306,7 +312,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
               padding: const EdgeInsets.only(top: 20),
               child: Text(
                 AppStrings.of(context).noPlansYet,
-                style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                style: TextStyle(color: colors.subtleText),
                 textAlign: TextAlign.center,
               ),
             )
@@ -316,7 +322,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -345,7 +351,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );

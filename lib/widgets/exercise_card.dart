@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/workout_model.dart';
+import '../services/app_theme.dart';
 
 
 // --- 下面是独立的组件，负责渲染每个动作卡片 ---
@@ -32,6 +33,8 @@ class ExerciseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final theme = Theme.of(context);
     final totalSets = exercise.sets.length;
     final totalReps = exercise.sets.fold<int>(0, (sum, s) => sum + s.reps);
     final totalVolume = exercise.sets.fold<double>(0, (sum, s) => sum + (s.weight * s.reps));
@@ -41,12 +44,12 @@ class ExerciseCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: colors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -78,14 +81,14 @@ class ExerciseCard extends StatelessWidget {
                         margin: const EdgeInsets.only(left: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFBB86FC).withOpacity(0.2),
+                          color: colors.accentSoft,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Text(
+                        child: Text(
                           "EXTRA",
                           style: TextStyle(
                             fontSize: 10,
-                            color: Color(0xFFBB86FC),
+                            color: theme.colorScheme.primary,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 0.5,
                           ),
@@ -97,7 +100,7 @@ class ExerciseCard extends StatelessWidget {
               (onRemove != null || onEdit != null)
                   ? PopupMenuButton<String>(
                       icon: const Icon(Icons.more_horiz, color: Colors.grey),
-                      color: const Color(0xFF2C2C2C),
+                      color: colors.surfaceElevated,
                       onSelected: (value) {
                         if (value == 'remove') onRemove?.call();
                         if (value == 'edit') onEdit?.call();
@@ -135,7 +138,7 @@ class ExerciseCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 12),
-          Divider(color: Colors.white.withOpacity(0.06)),
+          Divider(color: colors.border),
           const SizedBox(height: 8),
           
           // 表头 (Set | Previous | Weight | Reps | Done)
@@ -159,10 +162,10 @@ class ExerciseCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: set.isCompleted
-                    ? Colors.green.withOpacity(0.12)
-                    : Colors.white.withOpacity(0.03),
+                    ? Colors.green.withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                border: Border.all(color: colors.border),
               ),
               child: Row(
                 children: [
@@ -172,7 +175,7 @@ class ExerciseCard extends StatelessWidget {
                     height: 28,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -198,8 +201,8 @@ class ExerciseCard extends StatelessWidget {
                   // 4. Set 操作
                   if (onEditSet != null || onDeleteSet != null)
                     PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert, color: Colors.white.withOpacity(0.4), size: 18),
-                      color: const Color(0xFF2C2C2C),
+                      icon: Icon(Icons.more_vert, color: Colors.white.withValues(alpha: 0.4), size: 18),
+                      color: colors.surfaceElevated,
                       onSelected: (value) {
                         if (value == 'edit') onEditSet?.call(index);
                         if (value == 'delete') onDeleteSet?.call(index);
@@ -223,8 +226,8 @@ class ExerciseCard extends StatelessWidget {
                     width: 40,
                     child: Checkbox(
                       value: set.isCompleted,
-                      activeColor: const Color(0xFFBB86FC), // 选中后的紫色
-                      checkColor: Colors.black,
+                      activeColor: theme.colorScheme.primary,
+                      checkColor: colors.accentForeground,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(4),
                       ),
@@ -274,14 +277,14 @@ class ExerciseCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         "$label $value",
         style: TextStyle(
           fontSize: 11,
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withValues(alpha: 0.7),
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -293,7 +296,7 @@ class ExerciseCard extends StatelessWidget {
       height: 30,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(10),
       ),
       alignment: Alignment.center,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/app_locale.dart';
 import '../services/app_strings.dart';
+import '../services/app_theme.dart';
 
 class LanguageSwitcher extends StatelessWidget {
   const LanguageSwitcher({super.key});
@@ -14,6 +15,8 @@ class LanguageSwitcher extends StatelessWidget {
             ? 'system'
             : '${locale.languageCode}_${locale.countryCode ?? ''}';
         final strings = AppStrings.of(context);
+        final colors = context.appColors;
+        final theme = Theme.of(context);
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -49,13 +52,13 @@ class LanguageSwitcher extends StatelessWidget {
               style: ButtonStyle(
                 backgroundColor: WidgetStateProperty.resolveWith<Color?>(
                   (states) => states.contains(WidgetState.selected)
-                      ? const Color(0xFFBB86FC)
-                      : const Color(0xFF2C2C2C),
+                      ? theme.colorScheme.primary
+                      : colors.surfaceElevated,
                 ),
                 foregroundColor: WidgetStateProperty.resolveWith<Color?>(
                   (states) => states.contains(WidgetState.selected)
-                      ? Colors.black
-                      : Colors.white,
+                      ? colors.accentForeground
+                      : theme.colorScheme.onSurface,
                 ),
                 padding: WidgetStateProperty.all(
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -69,7 +72,7 @@ class LanguageSwitcher extends StatelessWidget {
                   ),
                 ),
                 side: WidgetStateProperty.all(
-                  BorderSide(color: Colors.white.withOpacity(0.08)),
+                  BorderSide(color: colors.border),
                 ),
               ),
             );

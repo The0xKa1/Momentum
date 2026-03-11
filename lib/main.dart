@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'pages/splash_page.dart';
+import 'services/app_background.dart';
 import 'services/app_locale.dart';
+import 'services/app_theme.dart';
 import 'services/rest_timer_alarm.dart';
 
 void main() async {
@@ -23,6 +27,8 @@ void main() async {
   }
 
   await AppLocaleController.load();
+  await AppBackgroundController.load();
+  await AppThemeController.load();
   
   runApp(const MyApp());
 }
@@ -35,30 +41,83 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<Locale?>(
       valueListenable: AppLocaleController.locale,
       builder: (context, locale, _) {
-        return MaterialApp(
-          title: 'Momentum',
-          debugShowCheckedModeBanner: false, // 去掉右上角那个 Debug 条幅
-          locale: locale,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: const [
-            Locale('zh', 'CN'),
-            Locale('en', 'US'),
-          ],
-          theme: ThemeData(
-            brightness: Brightness.dark,
-            primaryColor: const Color(0xFFBB86FC),
-            scaffoldBackgroundColor: const Color(0xFF121212),
-            useMaterial3: true,
-            textTheme: GoogleFonts.interTextTheme(
-              Theme.of(context).textTheme,
-            ),
-          ),
-          // --- 修改这里 ---
-          home: const SplashPage(), // 启动时先进入 SplashPage
+        return ValueListenableBuilder<AppThemeConfig>(
+          valueListenable: AppThemeController.theme,
+          builder: (context, themeConfig, _) {
+            final baseTheme = AppThemeController.buildTheme(themeConfig);
+            return MaterialApp(
+              title: 'Momentum',
+              debugShowCheckedModeBanner: false,
+              locale: locale,
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: const [
+                Locale('zh', 'CN'),
+                Locale('en', 'US'),
+              ],
+              theme: baseTheme.copyWith(
+                textTheme: GoogleFonts.interTextTheme(baseTheme.textTheme),
+              ),
+              builder: (context, child) {
+                return ValueListenableBuilder<AppBackgroundConfig>(
+                  valueListenable: AppBackgroundController.background,
+                  builder: (context, backgroundConfig, _) {
+                    final backgroundColor = themeConfig.background;
+                    final imagePath = backgroundConfig.imagePath;
+                    final hasImage = !kIsWeb &&
+                        imagePath != null &&
+                        imagePath.isNotEmpty &&
+                        File(imagePath).existsSync();
+
+                    Widget background = ColoredBox(color: backgroundColor);
+                    if (hasImage) {
+                      background = Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ColoredBox(color: backgroundColor),
+                          if (backgroundConfig.blurSigma > 0)
+                            ImageFiltered(
+                              imageFilter: ImageFilter.blur(
+                                sigmaX: backgroundConfig.blurSigma,
+                                sigmaY: backgroundConfig.blurSigma,
+                              ),
+                              child: Image.file(
+                                File(imagePath),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              ),
+                            )
+                          else
+                            Image.file(
+                              File(imagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                            ),
+                          ColoredBox(
+                            color: Colors.black.withValues(
+                              alpha: backgroundConfig.overlayOpacity.clamp(0.0, 1.0),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        background,
+                        if (child != null) child,
+                      ],
+                    );
+                  },
+                );
+              },
+              home: const SplashPage(),
+            );
+          },
         );
       },
     );
