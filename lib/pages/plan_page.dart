@@ -380,6 +380,98 @@ class _PlanPageState extends State<PlanPage> {
     }
   }
 
+  void _showPlanDetailsDialog() {
+    final colors = context.appColors;
+    final strings = AppStrings.of(context);
+    final selectedDay = _selectedDay;
+    final planName = selectedDay == null
+        ? null
+        : (_getEventsForDay(selectedDay).isEmpty ? null : _getEventsForDay(selectedDay).first);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: colors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.border,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              strings.planDetails,
+                              style: TextStyle(
+                                color: colors.subtleText,
+                                fontSize: 12,
+                                letterSpacing: 1.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (planName != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                planName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceElevated,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: _buildPlanDetailsBody(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -438,13 +530,7 @@ class _PlanPageState extends State<PlanPage> {
                         builder: (context, constraints) {
                           final isNarrow = constraints.maxWidth < 720;
                           if (isNarrow) {
-                            return Column(
-                              children: [
-                                Expanded(child: _buildEventList()),
-                                const SizedBox(height: 16),
-                                Expanded(child: _buildPlanDetails()),
-                              ],
-                            );
+                            return _buildCompactSchedulePane();
                           }
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,7 +559,42 @@ class _PlanPageState extends State<PlanPage> {
       ),
     );
   }
-Widget _buildCalendar() {
+
+  Widget _buildCompactSchedulePane() {
+    final colors = context.appColors;
+    final strings = AppStrings.of(context);
+    final events = _getEventsForDay(_selectedDay!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (events.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showPlanDetailsDialog,
+                icon: const Icon(Icons.open_in_full, size: 18),
+                label: Text(strings.viewPlanDetails),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: colors.border),
+                  backgroundColor: colors.surfaceElevated,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Expanded(child: _buildEventList()),
+      ],
+    );
+  }
+
+  Widget _buildCalendar() {
     final colors = context.appColors;
     final theme = Theme.of(context);
     return TableCalendar(
@@ -737,63 +858,74 @@ Widget _buildCalendar() {
               ),
             ),
           if (planName != null) const SizedBox(height: 12),
-          Expanded(
-            child: _selectedDayExercises.isEmpty
-                ? Center(
-                    child: Text(
-                      planName == null ? strings.restDay : strings.noPlanDetails,
-                      style: TextStyle(color: colors.subtleText),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: _selectedDayExercises.length,
-                    separatorBuilder: (context, index) => Divider(color: colors.border, height: 20),
-                    itemBuilder: (context, index) {
-                      final exercise = _selectedDayExercises[index];
-                      final totalSets = exercise.sets.length;
-                      final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            exercise.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
-                            style: TextStyle(color: colors.subtleText, fontSize: 12),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: exercise.sets.map((set) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: colors.softFill,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '${set.weight} kg x ${set.reps}',
-                                  style: TextStyle(color: colors.mutedText, fontSize: 12),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: _buildPlanDetailsBody()),
         ],
       ),
+    );
+  }
+
+  Widget _buildPlanDetailsBody() {
+    final colors = context.appColors;
+    final strings = AppStrings.of(context);
+    final selectedDay = _selectedDay;
+    final planName = selectedDay == null
+        ? null
+        : (_getEventsForDay(selectedDay).isEmpty ? null : _getEventsForDay(selectedDay).first);
+
+    if (_selectedDayExercises.isEmpty) {
+      return Center(
+        child: Text(
+          planName == null ? strings.restDay : strings.noPlanDetails,
+          style: TextStyle(color: colors.subtleText),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: _selectedDayExercises.length,
+      separatorBuilder: (context, index) => Divider(color: colors.border, height: 20),
+      itemBuilder: (context, index) {
+        final exercise = _selectedDayExercises[index];
+        final totalSets = exercise.sets.length;
+        final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              exercise.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
+              style: TextStyle(color: colors.subtleText, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: exercise.sets.map((set) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: colors.softFill,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${set.weight} kg x ${set.reps}',
+                    style: TextStyle(color: colors.mutedText, fontSize: 12),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        );
+      },
     );
   }
 }

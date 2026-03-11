@@ -45,6 +45,7 @@ class AppStrings {
   String get goToPlanSettings => _isZh ? '去计划设置' : 'Go to Plan Settings';
   String get schedule => _isZh ? '日程' : 'SCHEDULE';
   String get planDetails => _isZh ? '计划详情' : 'PLAN DETAILS';
+  String get viewPlanDetails => _isZh ? '查看详情' : 'View Details';
   String get noPlanDetails => _isZh ? '该日期暂无可展示的具体动作' : 'No detailed exercises for this day';
   String get restDay => _isZh ? '休息日' : 'Rest Day';
   String get planDeleted => _isZh ? '计划已删除' : 'Plan deleted';
