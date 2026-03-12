@@ -15,6 +15,7 @@ import '../services/rest_timer_alarm.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/rest_sound_settings.dart';
+import '../services/weight_unit_settings.dart';
 
 // 引入拆分出的组件模块
 import '../widgets/exercise_card.dart';
@@ -64,6 +65,26 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
   void refreshData() {
     _loadTodayPlan();
+  }
+
+  WeightUnit get _weightUnit => WeightUnitController.unit.value;
+
+  String _weightLabel(BuildContext context) {
+    return AppStrings.of(context).weightLabel(
+      WeightUnitController.shortLabel(_weightUnit),
+    );
+  }
+
+  String _weightText(double kgValue) {
+    return WeightUnitController.formatNumber(
+      WeightUnitController.fromKg(kgValue, _weightUnit),
+    );
+  }
+
+  double? _parseWeightInput(String input) {
+    final value = double.tryParse(input);
+    if (value == null) return null;
+    return WeightUnitController.toKg(value, _weightUnit);
   }
 
   @override
@@ -639,8 +660,9 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     if (extraIndex < 0 || extraIndex >= exercises.length - _planCount) return;
     final exercise = exercises[_planCount + extraIndex];
     final draft = _ExerciseDraft(
+      unit: _weightUnit,
       name: exercise.name,
-      weight: exercise.sets.isNotEmpty ? exercise.sets.first.weight.toString() : "0",
+      weight: exercise.sets.isNotEmpty ? _weightText(exercise.sets.first.weight) : "0",
       reps: exercise.sets.isNotEmpty ? exercise.sets.first.reps.toString() : "10",
       sets: exercise.sets.length.toString(),
     );
@@ -703,7 +725,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
-                              labelText: AppStrings.of(context).weightKg,
+                              labelText: _weightLabel(context),
                               labelStyle: const TextStyle(color: Colors.white70),
                             ),
                           ),
@@ -813,7 +835,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     final colors = context.appColors;
     final theme = Theme.of(context);
     final lastSet = exercises[exIndex].sets.isNotEmpty ? exercises[exIndex].sets.last : null;
-    _weightController.text = lastSet?.weight.toString() ?? "0";
+    _weightController.text = lastSet == null ? "0" : _weightText(lastSet.weight);
     _repsController.text = lastSet?.reps.toString() ?? "10";
 
     showDialog(
@@ -832,7 +854,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                labelText: AppStrings.of(context).weightKg,
+                labelText: _weightLabel(context),
                 labelStyle: const TextStyle(color: Colors.white70),
               ),
             ),
@@ -854,7 +876,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
           ),
           TextButton(
             onPressed: () {
-              final weight = double.tryParse(_weightController.text);
+              final weight = _parseWeightInput(_weightController.text);
               final reps = int.tryParse(_repsController.text);
               if (weight == null || reps == null || reps <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -887,7 +909,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     if (exIndex < 0 || exIndex >= exercises.length) return;
     if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
     final set = exercises[exIndex].sets[setIndex];
-    _weightController.text = set.weight.toString();
+    _weightController.text = _weightText(set.weight);
     _repsController.text = set.reps.toString();
 
     showDialog(
@@ -906,7 +928,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                labelText: AppStrings.of(context).weightKg,
+                labelText: _weightLabel(context),
                 labelStyle: const TextStyle(color: Colors.white70),
               ),
             ),
@@ -928,7 +950,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
           ),
           TextButton(
             onPressed: () {
-              final weight = double.tryParse(_weightController.text);
+              final weight = _parseWeightInput(_weightController.text);
               final reps = int.tryParse(_repsController.text);
               if (weight == null || reps == null || reps <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -979,7 +1001,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       );
       return;
     }
-    final _ExerciseDraft draft = _ExerciseDraft();
+    final _ExerciseDraft draft = _ExerciseDraft(unit: _weightUnit);
 
     showModalBottomSheet(
       context: context,
@@ -1040,7 +1062,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
-                              labelText: AppStrings.of(context).weightKg,
+                              labelText: _weightLabel(context),
                               labelStyle: const TextStyle(color: Colors.white70),
                             ),
                           ),
@@ -1204,21 +1226,25 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (context, index) => ExerciseCard(
-          exercise: exercises[index],
-          onSetToggle: (setIndex) => _handleSetToggle(index, setIndex),
-          onAddSet: () => _showAddSetDialog(index),
-          onEditSet: (setIndex) => _showEditSetDialog(index, setIndex),
-          onDeleteSet: (setIndex) => _deleteSet(index, setIndex),
-          onRemove: () {
-            if (index < _planCount) {
-              _removePlanExerciseFromToday(exercises[index].name);
-            } else {
-              _removeExtraExercise(index - _planCount);
-            }
-          },
-          onEdit: index >= _planCount ? () => _showEditExtraExerciseDialog(index - _planCount) : null,
-          isExtra: index >= _planCount,
+        (context, index) => ValueListenableBuilder<WeightUnit>(
+          valueListenable: WeightUnitController.unit,
+          builder: (context, unit, _) => ExerciseCard(
+            exercise: exercises[index],
+            unit: unit,
+            onSetToggle: (setIndex) => _handleSetToggle(index, setIndex),
+            onAddSet: () => _showAddSetDialog(index),
+            onEditSet: (setIndex) => _showEditSetDialog(index, setIndex),
+            onDeleteSet: (setIndex) => _deleteSet(index, setIndex),
+            onRemove: () {
+              if (index < _planCount) {
+                _removePlanExerciseFromToday(exercises[index].name);
+              } else {
+                _removeExtraExercise(index - _planCount);
+              }
+            },
+            onEdit: index >= _planCount ? () => _showEditExtraExerciseDialog(index - _planCount) : null,
+            isExtra: index >= _planCount,
+          ),
         ),
         childCount: exercises.length,
       ),
@@ -1227,12 +1253,14 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 }
 
 class _ExerciseDraft {
+  final WeightUnit unit;
   final TextEditingController nameController;
   final TextEditingController weightController;
   final TextEditingController repsController;
   final TextEditingController setsController;
 
   _ExerciseDraft({
+    required this.unit,
     String name = "",
     String weight = "0",
     String reps = "10",
@@ -1252,10 +1280,11 @@ class _ExerciseDraft {
       return null;
     }
     if (reps <= 0 || sets <= 0 || weight < 0) return null;
+    final weightInKg = WeightUnitController.toKg(weight, unit);
 
     return Exercise(
       name: name,
-      sets: List.generate(sets, (_) => WorkoutSet(weight: weight, reps: reps)),
+      sets: List.generate(sets, (_) => WorkoutSet(weight: weightInKg, reps: reps)),
     );
   }
 

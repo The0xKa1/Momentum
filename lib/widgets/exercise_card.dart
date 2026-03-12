@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/workout_model.dart';
 import '../services/app_theme.dart';
+import '../services/weight_unit_settings.dart';
 
 
 // --- 下面是独立的组件，负责渲染每个动作卡片 ---
 
 class ExerciseCard extends StatelessWidget {
   final Exercise exercise;
+  final WeightUnit unit;
   final Function(int setIndex) onSetToggle; // 回调函数
   final VoidCallback onAddSet;
   /// 从今日训练中移除（计划项仅隐藏，额外项会从当日数据删除）
@@ -22,6 +24,7 @@ class ExerciseCard extends StatelessWidget {
   const ExerciseCard({
     super.key,
     required this.exercise,
+    required this.unit,
     required this.onSetToggle,
     required this.onAddSet,
     this.onRemove,
@@ -37,7 +40,8 @@ class ExerciseCard extends StatelessWidget {
     final theme = Theme.of(context);
     final totalSets = exercise.sets.length;
     final totalReps = exercise.sets.fold<int>(0, (sum, s) => sum + s.reps);
-    final totalVolume = exercise.sets.fold<double>(0, (sum, s) => sum + (s.weight * s.reps));
+    final totalVolumeKg = exercise.sets.fold<double>(0, (sum, s) => sum + (s.weight * s.reps));
+    final totalVolume = WeightUnitController.fromKg(totalVolumeKg, unit);
     final completedSets = exercise.sets.where((s) => s.isCompleted).length;
 
     return Container(
@@ -133,7 +137,7 @@ class ExerciseCard extends StatelessWidget {
             children: [
               _buildStatChip("Sets", "$completedSets/$totalSets"),
               _buildStatChip("Reps", "$totalReps"),
-              _buildStatChip("Volume", totalVolume.toStringAsFixed(0)),
+              _buildStatChip("Volume", WeightUnitController.formatNumber(totalVolume)),
             ],
           ),
 
@@ -147,7 +151,7 @@ class ExerciseCard extends StatelessWidget {
             child: Row(
               children: [
                 _buildHeader("SET", width: 40),
-                _buildHeader("KG", flex: 1),
+                _buildHeader(WeightUnitController.shortLabel(unit).toUpperCase(), flex: 1),
                 _buildHeader("REPS", flex: 1),
                 const SizedBox(width: 40), // Checkbox 占位
               ],
@@ -190,7 +194,9 @@ class ExerciseCard extends StatelessWidget {
 
                   // 2. 重量
                   Expanded(
-                    child: _buildValuePill("${set.weight} kg"),
+                    child: _buildValuePill(
+                      WeightUnitController.formatWeight(set.weight, unit),
+                    ),
                   ),
 
                   // 3. 次数

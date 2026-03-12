@@ -12,6 +12,7 @@ import 'services/app_background.dart';
 import 'services/app_locale.dart';
 import 'services/app_theme.dart';
 import 'services/rest_timer_alarm.dart';
+import 'services/weight_unit_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,7 @@ void main() async {
   await AppLocaleController.load();
   await AppBackgroundController.load();
   await AppThemeController.load();
+  await WeightUnitController.load();
   
   runApp(const MyApp());
 }
@@ -87,14 +89,14 @@ class MyApp extends StatelessWidget {
                               child: Image.file(
                                 File(imagePath),
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                               ),
                             )
                           else
                             Image.file(
                               File(imagePath),
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                             ),
                           ColoredBox(
                             color: Colors.black.withValues(
@@ -109,7 +111,7 @@ class MyApp extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         background,
-                        if (child != null) child,
+                        child ?? const SizedBox.shrink(),
                       ],
                     );
                   },

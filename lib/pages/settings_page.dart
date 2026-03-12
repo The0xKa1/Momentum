@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/app_background.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/rest_sound_settings.dart';
+import '../services/weight_unit_settings.dart';
 import '../widgets/language_switcher.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -85,6 +87,10 @@ class SettingsPage extends StatelessWidget {
                 },
               ),
             ),
+            const SizedBox(height: 20),
+            _SectionTitle(title: strings.weightUnitSetting),
+            const SizedBox(height: 8),
+            const _WeightUnitSetting(),
             const SizedBox(height: 20),
             _SectionTitle(title: strings.appearanceSetting),
             const SizedBox(height: 8),
@@ -559,10 +565,11 @@ class _BackgroundImageSettingState extends State<_BackgroundImageSetting> {
       }
       await AppBackgroundController.setImagePath(path);
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isPicking = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isPicking = false;
+        });
+      }
     }
   }
 
@@ -697,11 +704,28 @@ class _RestSoundSetting extends StatefulWidget {
 
 class _RestSoundSettingState extends State<_RestSoundSetting> {
   bool _isPicking = false;
+  final AudioPlayer _previewPlayer = AudioPlayer();
+  bool _isPreviewPlaying = false;
 
   @override
   void initState() {
     super.initState();
     RestSoundController.load();
+    _previewPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
+      final isPlaying = state.playing;
+      if (_isPreviewPlaying != isPlaying) {
+        setState(() {
+          _isPreviewPlaying = isPlaying;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _previewPlayer.dispose();
+    super.dispose();
   }
 
   String _fileNameFromPath(String path) {
@@ -712,6 +736,7 @@ class _RestSoundSettingState extends State<_RestSoundSetting> {
 
   Future<void> _pickSound() async {
     if (_isPicking) return;
+    await _stopPreview();
     setState(() {
       _isPicking = true;
     });
@@ -743,7 +768,42 @@ class _RestSoundSettingState extends State<_RestSoundSetting> {
   }
 
   Future<void> _resetSound() async {
+    await _stopPreview();
     await RestSoundController.setSoundPath(null);
+  }
+
+  Future<void> _playPreview(String? path) async {
+    try {
+      if (path == null || path.isEmpty) {
+        await _previewPlayer.setAsset('assets/sounds/alarm.mp3');
+      } else {
+        await _previewPlayer.setFilePath(path);
+      }
+      await _previewPlayer.seek(Duration.zero);
+      await _previewPlayer.play();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.of(context).soundPreviewFailed),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  Future<void> _stopPreview() async {
+    try {
+      await _previewPlayer.stop();
+    } catch (_) {}
+  }
+
+  Future<void> _togglePreview(String? path) async {
+    if (_isPreviewPlaying) {
+      await _stopPreview();
+      return;
+    }
+    await _playPreview(path);
   }
 
   @override
@@ -798,9 +858,71 @@ class _RestSoundSettingState extends State<_RestSoundSetting> {
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
+                  OutlinedButton(
+                    onPressed: _isPicking ? null : () => _togglePreview(path),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      _isPreviewPlaying ? strings.stopPreview : strings.previewSound,
+                    ),
+                  ),
                   TextButton(
                     onPressed: _isPicking ? null : _resetSound,
                     child: Text(strings.resetDefault, style: TextStyle(color: colors.subtleText)),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WeightUnitSetting extends StatelessWidget {
+  const _WeightUnitSetting();
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final colors = context.appColors;
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ValueListenableBuilder<WeightUnit>(
+        valueListenable: WeightUnitController.unit,
+        builder: (context, unit, _) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                strings.weightLabel(WeightUnitController.shortLabel(unit)),
+                style: TextStyle(color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: Text(strings.kilograms),
+                    selected: unit == WeightUnit.kg,
+                    onSelected: (_) => WeightUnitController.setUnit(WeightUnit.kg),
+                  ),
+                  ChoiceChip(
+                    label: Text(strings.pounds),
+                    selected: unit == WeightUnit.lb,
+                    onSelected: (_) => WeightUnitController.setUnit(WeightUnit.lb),
                   ),
                 ],
               ),

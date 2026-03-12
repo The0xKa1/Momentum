@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
+import '../services/weight_unit_settings.dart';
 import '../models/workout_model.dart';
 
 class PlanSettingsPage extends StatefulWidget {
@@ -74,12 +75,13 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
   void _openEditPlan({String? existingName, List<Exercise>? existingExercises}) {
     final colors = context.appColors;
     final theme = Theme.of(context);
+    final unit = WeightUnitController.unit.value;
     final TextEditingController nameController =
         TextEditingController(text: existingName ?? "");
     final List<_ExerciseDraft> drafts = (existingExercises ?? [])
-        .map((e) => _ExerciseDraft.fromExercise(e))
+        .map((e) => _ExerciseDraft.fromExercise(e, unit))
         .toList();
-    if (drafts.isEmpty) drafts.add(_ExerciseDraft());
+    if (drafts.isEmpty) drafts.add(_ExerciseDraft(unit: unit));
 
     showModalBottomSheet(
       context: context,
@@ -180,7 +182,11 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                                     controller: draft.weightController,
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(labelText: strings.weightKg),
+                                    decoration: InputDecoration(
+                                      labelText: strings.weightLabel(
+                                        WeightUnitController.shortLabel(unit),
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -212,7 +218,7 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
                       child: OutlinedButton(
                         onPressed: () {
                           setModalState(() {
-                            drafts.add(_ExerciseDraft());
+                            drafts.add(_ExerciseDraft(unit: unit));
                           });
                         },
                         style: OutlinedButton.styleFrom(
@@ -359,12 +365,14 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
 }
 
 class _ExerciseDraft {
+  final WeightUnit unit;
   final TextEditingController nameController;
   final TextEditingController weightController;
   final TextEditingController repsController;
   final TextEditingController setsController;
 
   _ExerciseDraft({
+    required this.unit,
     String name = "",
     String weight = "0",
     String reps = "10",
@@ -374,11 +382,14 @@ class _ExerciseDraft {
         repsController = TextEditingController(text: reps),
         setsController = TextEditingController(text: sets);
 
-  factory _ExerciseDraft.fromExercise(Exercise exercise) {
+  factory _ExerciseDraft.fromExercise(Exercise exercise, WeightUnit unit) {
     final set = exercise.sets.isNotEmpty ? exercise.sets.first : WorkoutSet(weight: 0, reps: 0);
     return _ExerciseDraft(
+      unit: unit,
       name: exercise.name,
-      weight: set.weight.toString(),
+      weight: WeightUnitController.formatNumber(
+        WeightUnitController.fromKg(set.weight, unit),
+      ),
       reps: set.reps.toString(),
       sets: exercise.sets.length.toString(),
     );
@@ -394,10 +405,11 @@ class _ExerciseDraft {
       return null;
     }
     if (reps <= 0 || sets <= 0 || weight < 0) return null;
+    final weightInKg = WeightUnitController.toKg(weight, unit);
 
     return Exercise(
       name: name,
-      sets: List.generate(sets, (_) => WorkoutSet(weight: weight, reps: reps)),
+      sets: List.generate(sets, (_) => WorkoutSet(weight: weightInKg, reps: reps)),
     );
   }
 

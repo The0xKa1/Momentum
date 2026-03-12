@@ -6,6 +6,7 @@ import '../models/workout_model.dart';
 import 'plan_settings_page.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
+import '../services/weight_unit_settings.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -882,50 +883,53 @@ class _PlanPageState extends State<PlanPage> {
       );
     }
 
-    return ListView.separated(
-      itemCount: _selectedDayExercises.length,
-      separatorBuilder: (context, index) => Divider(color: colors.border, height: 20),
-      itemBuilder: (context, index) {
-        final exercise = _selectedDayExercises[index];
-        final totalSets = exercise.sets.length;
-        final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              exercise.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+    return ValueListenableBuilder<WeightUnit>(
+      valueListenable: WeightUnitController.unit,
+      builder: (context, unit, _) => ListView.separated(
+        itemCount: _selectedDayExercises.length,
+        separatorBuilder: (context, index) => Divider(color: colors.border, height: 20),
+        itemBuilder: (context, index) {
+          final exercise = _selectedDayExercises[index];
+          final totalSets = exercise.sets.length;
+          final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                exercise.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
-              style: TextStyle(color: colors.subtleText, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: exercise.sets.map((set) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: colors.softFill,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${set.weight} kg x ${set.reps}',
-                    style: TextStyle(color: colors.mutedText, fontSize: 12),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        );
-      },
+              const SizedBox(height: 6),
+              Text(
+                '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
+                style: TextStyle(color: colors.subtleText, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: exercise.sets.map((set) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: colors.softFill,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${WeightUnitController.formatWeight(set.weight, unit)} x ${set.reps}',
+                      style: TextStyle(color: colors.mutedText, fontSize: 12),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

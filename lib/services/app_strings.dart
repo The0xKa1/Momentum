@@ -32,7 +32,10 @@ class AppStrings {
   String get planName => _isZh ? '计划名称' : 'Plan name';
   String get exercise => _isZh ? '动作' : 'Exercise';
   String get exerciseName => _isZh ? '动作名称' : 'Exercise name';
-  String get weightKg => _isZh ? '重量（kg）' : 'Weight (kg)';
+  String weightLabel(String unit) => _isZh ? '重量（$unit）' : 'Weight ($unit)';
+  String get weightUnitSetting => _isZh ? '重量单位' : 'Weight Unit';
+  String get kilograms => _isZh ? '千克（kg）' : 'Kilograms (kg)';
+  String get pounds => _isZh ? '磅（lb）' : 'Pounds (lb)';
   String get reps => _isZh ? '次数' : 'Reps';
   String get sets => _isZh ? '组数' : 'Sets';
   String get addExercise => _isZh ? '+ 添加动作' : '+ Add Exercise';
@@ -82,10 +85,13 @@ class AppStrings {
   String get soundSetting => _isZh ? '铃声' : 'Sound';
   String get restSoundSetting => _isZh ? '休息铃声' : 'Rest Sound';
   String get chooseSound => _isZh ? '选择铃声' : 'Choose Sound';
+  String get previewSound => _isZh ? '试听铃声' : 'Preview';
+  String get stopPreview => _isZh ? '停止试听' : 'Stop Preview';
   String get defaultSound => _isZh ? '默认铃声' : 'Default';
   String get resetDefault => _isZh ? '恢复默认' : 'Reset';
   String get soundSelected => _isZh ? '已选择' : 'Selected';
   String get invalidSoundFile => _isZh ? '无法使用该音频文件' : 'Unable to use this audio file';
+  String get soundPreviewFailed => _isZh ? '铃声试听失败' : 'Unable to preview this sound';
   String get soundForForegroundAndBackground => _isZh ? '前台倒计时与后台提醒都会使用该铃声' : 'Used for both in-app and background rest alarms';
 
   String get appearanceSetting => _isZh ? '配色' : 'Appearance';
