@@ -1,24 +1,19 @@
 import 'package:flutter/material.dart';
+
 import '../models/workout_model.dart';
+import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/weight_unit_settings.dart';
-
-
-// --- 下面是独立的组件，负责渲染每个动作卡片 ---
 
 class ExerciseCard extends StatelessWidget {
   final Exercise exercise;
   final WeightUnit unit;
-  final Function(int setIndex) onSetToggle; // 回调函数
+  final Function(int setIndex) onSetToggle;
   final VoidCallback onAddSet;
-  /// 从今日训练中移除（计划项仅隐藏，额外项会从当日数据删除）
   final VoidCallback? onRemove;
-  /// 编辑此动作（仅对当日额外动作有效）
   final VoidCallback? onEdit;
-  /// 编辑/删除单个 set
   final Function(int setIndex)? onEditSet;
   final Function(int setIndex)? onDeleteSet;
-  /// 标记是否为“当日额外动作”
   final bool isExtra;
 
   const ExerciseCard({
@@ -38,10 +33,8 @@ class ExerciseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final theme = Theme.of(context);
+    final strings = AppStrings.of(context);
     final totalSets = exercise.sets.length;
-    final totalReps = exercise.sets.fold<int>(0, (sum, s) => sum + s.reps);
-    final totalVolumeKg = exercise.sets.fold<double>(0, (sum, s) => sum + (s.weight * s.reps));
-    final totalVolume = WeightUnitController.fromKg(totalVolumeKg, unit);
     final completedSets = exercise.sets.where((s) => s.isCompleted).length;
 
     return Container(
@@ -62,42 +55,26 @@ class ExerciseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 动作名称
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Row(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Expanded(
-                      child: Text(
-                        exercise.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      exercise.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
+                    _buildTag(_typeLabel(strings), theme.colorScheme.primary, colors.accentForeground),
                     if (isExtra)
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: colors.accentSoft,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          "EXTRA",
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
+                      _buildTag("EXTRA", colors.accentSoft, theme.colorScheme.primary),
                   ],
                 ),
               ),
@@ -122,58 +99,43 @@ class ExerciseCard extends StatelessWidget {
                           ),
                       ],
                     )
-                  : IconButton(
-                      icon: const Icon(Icons.more_horiz, color: Colors.grey),
-                      onPressed: () {},
-                    )
+                  : const SizedBox(width: 40),
             ],
           ),
           const SizedBox(height: 12),
-
-          // 小结信息
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildStatChip("Sets", "$completedSets/$totalSets"),
-              _buildStatChip("Reps", "$totalReps"),
-              _buildStatChip("Volume", WeightUnitController.formatNumber(totalVolume)),
+              _buildStatChip(strings.sets, "$completedSets/$totalSets"),
+              if (exercise.type == ExerciseType.weighted)
+                _buildStatChip(
+                  strings.weightLabel(WeightUnitController.shortLabel(unit)),
+                  _sumWeight(),
+                ),
+              if (exercise.type == ExerciseType.timed)
+                _buildStatChip(strings.duration, _sumDuration()),
+              if (exercise.type == ExerciseType.free && exercise.customFields.isNotEmpty)
+                _buildStatChip(strings.customFields, exercise.customFields.join(" / ")),
             ],
           ),
-
           const SizedBox(height: 12),
           Divider(color: colors.border),
           const SizedBox(height: 8),
-          
-          // 表头 (Set | Previous | Weight | Reps | Done)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Row(
-              children: [
-                _buildHeader("SET", width: 40),
-                _buildHeader(WeightUnitController.shortLabel(unit).toUpperCase(), flex: 1),
-                _buildHeader("REPS", flex: 1),
-                const SizedBox(width: 40), // Checkbox 占位
-              ],
-            ),
-          ),
-
-          // 组数列表
           ...List.generate(exercise.sets.length, (index) {
             final set = exercise.sets[index];
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: set.isCompleted
                     ? Colors.green.withValues(alpha: 0.12)
                     : Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: colors.border),
               ),
               child: Row(
                 children: [
-                  // 1. 组号
                   Container(
                     width: 28,
                     height: 28,
@@ -190,21 +152,14 @@ class ExerciseCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-
-                  // 2. 重量
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: _buildValuePill(
-                      WeightUnitController.formatWeight(set.weight, unit),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _buildSetMetricPills(strings, set),
                     ),
                   ),
-
-                  // 3. 次数
-                  Expanded(
-                    child: _buildValuePill("${set.reps} reps"),
-                  ),
-
-                  // 4. Set 操作
                   if (onEditSet != null || onDeleteSet != null)
                     PopupMenuButton<String>(
                       icon: Icon(Icons.more_vert, color: Colors.white.withValues(alpha: 0.4), size: 18),
@@ -226,28 +181,20 @@ class ExerciseCard extends StatelessWidget {
                           ),
                       ],
                     ),
-
-                  // 5. 复选框 (核心交互)
                   SizedBox(
                     width: 40,
                     child: Checkbox(
                       value: set.isCompleted,
                       activeColor: theme.colorScheme.primary,
                       checkColor: colors.accentForeground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      onChanged: (val) {
-                        onSetToggle(index); // 触发父组件更新
-                      },
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      onChanged: (_) => onSetToggle(index),
                     ),
                   ),
                 ],
               ),
             );
           }),
-          
-          // 添加组数按钮
           Center(
             child: TextButton.icon(
               onPressed: onAddSet,
@@ -257,26 +204,24 @@ class ExerciseCard extends StatelessWidget {
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(String text, {double? width, int? flex}) {
-    Widget child = Center(
+  Widget _buildTag(String text, Color background, Color foreground) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.grey,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(fontSize: 10, color: foreground, fontWeight: FontWeight.bold),
       ),
     );
-    
-    if (flex != null) return Expanded(flex: flex, child: child);
-    return SizedBox(width: width, child: child);
   }
 
   Widget _buildStatChip(String label, String value) {
@@ -297,15 +242,31 @@ class ExerciseCard extends StatelessWidget {
     );
   }
 
+  List<Widget> _buildSetMetricPills(AppStrings strings, WorkoutSet set) {
+    final pills = <Widget>[];
+    if (exercise.type == ExerciseType.weighted && set.weight != null) {
+      pills.add(_buildValuePill(WeightUnitController.formatWeight(set.weight!, unit)));
+    }
+    if (exercise.type == ExerciseType.timed && set.duration != null) {
+      pills.add(_buildValuePill('${set.duration}s'));
+    }
+    if (exercise.type == ExerciseType.free) {
+      for (final field in exercise.customFields) {
+        final value = set.customValues[field];
+        if (value == null || value.trim().isEmpty) continue;
+        pills.add(_buildValuePill('$field $value'));
+      }
+    }
+    return pills;
+  }
+
   Widget _buildValuePill(String text) {
     return Container(
-      height: 30,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(10),
       ),
-      alignment: Alignment.center,
       child: Text(
         text,
         style: const TextStyle(
@@ -314,5 +275,28 @@ class ExerciseCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _typeLabel(AppStrings strings) {
+    switch (exercise.type) {
+      case ExerciseType.weighted:
+        return strings.weightedExercise;
+      case ExerciseType.timed:
+        return strings.timedExercise;
+      case ExerciseType.free:
+        return strings.freeExercise;
+    }
+  }
+
+  String _sumWeight() {
+    final totalKg = exercise.sets.fold<double>(0, (sum, set) => sum + (set.weight ?? 0));
+    return WeightUnitController.formatNumber(
+      WeightUnitController.fromKg(totalKg, unit),
+    );
+  }
+
+  String _sumDuration() {
+    final total = exercise.sets.fold<int>(0, (sum, set) => sum + (set.duration ?? 0));
+    return '${total}s';
   }
 }

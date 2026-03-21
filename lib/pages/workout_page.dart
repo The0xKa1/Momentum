@@ -37,6 +37,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
   static const String _prefsHiddenPlanKey = "hidden_plan_today";
   static const String _prefsCompletionKey = "daily_completion_state";
+  static const String _prefsDailyWorkoutSnapshotKey = "daily_workout_snapshot";
 
   // --- 状态变量 ---
   String _planTitle = "Rest Day";
@@ -59,33 +60,11 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   // 本地通知
   late final Future<void> _notificationsInit;
 
-  // 控制器
-  final TextEditingController _weightController = TextEditingController();
-  final TextEditingController _repsController = TextEditingController();
-
   void refreshData() {
     _loadTodayPlan();
   }
 
   WeightUnit get _weightUnit => WeightUnitController.unit.value;
-
-  String _weightLabel(BuildContext context) {
-    return AppStrings.of(context).weightLabel(
-      WeightUnitController.shortLabel(_weightUnit),
-    );
-  }
-
-  String _weightText(double kgValue) {
-    return WeightUnitController.formatNumber(
-      WeightUnitController.fromKg(kgValue, _weightUnit),
-    );
-  }
-
-  double? _parseWeightInput(String input) {
-    final value = double.tryParse(input);
-    if (value == null) return null;
-    return WeightUnitController.toKg(value, _weightUnit);
-  }
 
   @override
   void initState() {
@@ -102,8 +81,6 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     _restTimer?.cancel();
     _stopAlarm();
     _audioPlayer.dispose();
-    _weightController.dispose();
-    _repsController.dispose();
     WakelockPlus.disable();
     super.dispose();
   }
@@ -477,12 +454,30 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     await prefs.setString(_prefsCompletionKey, json.encode(completionMap));
   }
 
+  Future<void> _persistDailyWorkoutSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    final snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
+    final Map<String, dynamic> snapshotMap = snapshotString != null
+        ? Map<String, dynamic>.from(json.decode(snapshotString))
+        : {};
+
+    final key = _normalizeDate(DateTime.now()).toIso8601String();
+    snapshotMap[key] = {
+      "planTitle": _planTitle,
+      "planCount": _planCount,
+      "exercises": serializeExercises(exercises),
+    };
+
+    await prefs.setString(_prefsDailyWorkoutSnapshotKey, json.encode(snapshotMap));
+  }
+
   // --- 数据加载 ---
   Future<void> _loadTodayPlan() async {
     final prefs = await SharedPreferences.getInstance();
     String? jsonString = prefs.getString('events_data');
     String? templatesString = prefs.getString(_prefsPlanTemplatesKey);
     String? extrasString = prefs.getString(_prefsDailyExtrasKey);
+    String? snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
     
     setState(() {
       _planTitle = "Rest Day";
@@ -500,12 +495,52 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     String? planName = plans.isNotEmpty ? plans.first.toString() : null;
     if (planName == null || planName.isEmpty) return;
 
+    if (snapshotString != null) {
+      final snapshotMap = Map<String, dynamic>.from(json.decode(snapshotString));
+      final rawSnapshot = snapshotMap[key];
+      if (rawSnapshot is Map) {
+        final snapshot = Map<String, dynamic>.from(rawSnapshot);
+        final snapshotPlanTitle = (snapshot["planTitle"] ?? "").toString();
+        final rawExercises = snapshot["exercises"];
+        final snapshotPlanCount = (snapshot["planCount"] as num?)?.toInt() ?? 0;
+        if (snapshotPlanTitle == planName && rawExercises is List) {
+          final combinedExercises = parseExercises(List<dynamic>.from(rawExercises));
+          final completionString = prefs.getString(_prefsCompletionKey);
+          if (completionString != null) {
+            final completionMap = json.decode(completionString);
+            final completionForToday = completionMap[key];
+            if (completionForToday is List) {
+              for (int i = 0; i < combinedExercises.length && i < completionForToday.length; i++) {
+                final setFlags = completionForToday[i];
+                if (setFlags is List) {
+                  final sets = combinedExercises[i].sets;
+                  for (int j = 0; j < sets.length && j < setFlags.length; j++) {
+                    final flag = setFlags[j];
+                    if (flag is bool) {
+                      sets[j].isCompleted = flag;
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          setState(() {
+            _planTitle = planName;
+            _planCount = snapshotPlanCount.clamp(0, combinedExercises.length);
+            exercises = combinedExercises;
+          });
+          return;
+        }
+      }
+    }
+
     List<Exercise> planExercises = [];
     if (templatesString != null) {
       final Map<String, dynamic> templates = json.decode(templatesString);
       if (templates.containsKey(planName)) {
         final List<dynamic> rawExercises = templates[planName] ?? [];
-        planExercises = _parseExercises(rawExercises);
+        planExercises = parseExercises(rawExercises);
       }
     } else {
       // 兼容旧标签模板
@@ -529,7 +564,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       final Map<String, dynamic> extras = json.decode(extrasString);
       if (extras.containsKey(key)) {
         final List<dynamic> rawExtras = extras[key] ?? [];
-        extraExercises = _parseExercises(rawExtras);
+        extraExercises = parseExercises(rawExtras);
       }
     }
 
@@ -559,30 +594,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       _planCount = planExercises.length;
       exercises = combinedExercises;
     });
-  }
-
-  List<Exercise> _parseExercises(List<dynamic> rawExercises) {
-    return rawExercises.map((raw) {
-      final data = Map<String, dynamic>.from(raw as Map);
-      final String name = (data['name'] ?? '').toString();
-      final List<dynamic> rawSets = data['sets'] ?? [];
-      final sets = rawSets.map((rawSet) {
-        final setData = Map<String, dynamic>.from(rawSet as Map);
-        final double weight = (setData['weight'] ?? 0).toDouble();
-        final int reps = (setData['reps'] ?? 0).toInt();
-        return WorkoutSet(weight: weight, reps: reps);
-      }).toList();
-      return Exercise(name: name, sets: sets);
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _serializeExercises(List<Exercise> list) {
-    return list.map((e) {
-      return {
-        "name": e.name,
-        "sets": e.sets.map((s) => {"weight": s.weight, "reps": s.reps}).toList(),
-      };
-    }).toList();
+    await _persistDailyWorkoutSnapshot();
   }
 
   Future<void> _appendDailyExtraExercises(List<Exercise> extras) async {
@@ -597,10 +609,14 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     DateTime today = _normalizeDate(DateTime.now());
     String key = today.toIso8601String();
     List<dynamic> existing = decodedMap[key] ?? [];
-    existing.addAll(_serializeExercises(extras));
+    existing.addAll(serializeExercises(extras));
     decodedMap[key] = existing;
 
     await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    setState(() {
+      exercises = [...exercises, ...extras];
+    });
+    await _persistDailyWorkoutSnapshot();
   }
 
   Future<void> _saveExtraExerciseAt(int extraIndex, Exercise updated) async {
@@ -613,9 +629,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     String key = today.toIso8601String();
     List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
     if (extraIndex < 0 || extraIndex >= list.length) return;
-    list[extraIndex] = _serializeExercises([updated]).first;
+    list[extraIndex] = serializeExercises([updated]).first;
     decodedMap[key] = list;
     await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    await _persistDailyWorkoutSnapshot();
   }
 
   /// 从今日训练中移除计划动作（仅隐藏，不删模板）
@@ -657,15 +674,10 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   void _showEditExtraExerciseDialog(int extraIndex) {
     final colors = context.appColors;
     final theme = Theme.of(context);
+    final strings = AppStrings.of(context);
     if (extraIndex < 0 || extraIndex >= exercises.length - _planCount) return;
     final exercise = exercises[_planCount + extraIndex];
-    final draft = _ExerciseDraft(
-      unit: _weightUnit,
-      name: exercise.name,
-      weight: exercise.sets.isNotEmpty ? _weightText(exercise.sets.first.weight) : "0",
-      reps: exercise.sets.isNotEmpty ? exercise.sets.first.reps.toString() : "10",
-      sets: exercise.sets.length.toString(),
-    );
+    final draft = _ExerciseDraft.fromExercise(exercise, _weightUnit);
 
     showModalBottomSheet(
       context: context,
@@ -693,7 +705,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                           Text(
-                            AppStrings.of(context).editExtraExercise,
+                            strings.editExtraExercise,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.5),
                               fontSize: 12,
@@ -708,53 +720,11 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       ],
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: draft.nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: AppStrings.of(context).exerciseName,
-                        labelStyle: const TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: draft.weightController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: _weightLabel(context),
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: draft.repsController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: AppStrings.of(context).reps,
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: draft.setsController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: AppStrings.of(context).sets,
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _ExerciseDraftForm(
+                      draft: draft,
+                      unit: _weightUnit,
+                      strings: strings,
+                      onChanged: () => setModalState(() {}),
                     ),
                     const SizedBox(height: 20),
                     SizedBox(
@@ -765,7 +735,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           if (newExercise == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(AppStrings.of(context).completeExerciseFields),
+                                content: Text(strings.completeExerciseFields),
                                 duration: const Duration(seconds: 1),
                               )
                             );
@@ -778,7 +748,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           String key = today.toIso8601String();
                           List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
                           if (extraIndex < list.length) {
-                            list[extraIndex] = _serializeExercises([newExercise]).first;
+                            list[extraIndex] = serializeExercises([newExercise]).first;
                             decodedMap[key] = list;
                             await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
                             await _loadTodayPlan();
@@ -832,149 +802,172 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   void _showAddSetDialog(int exIndex) {
+    final seed = exercises[exIndex].sets.isNotEmpty ? exercises[exIndex].sets.last.copy() : null;
+    _showSetEditorDialog(exIndex: exIndex, initialSet: seed);
+  }
+
+  void _showEditSetDialog(int exIndex, int setIndex) {
+    if (exIndex < 0 || exIndex >= exercises.length) return;
+    if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
+    _showSetEditorDialog(
+      exIndex: exIndex,
+      setIndex: setIndex,
+      initialSet: exercises[exIndex].sets[setIndex].copy(),
+    );
+  }
+
+  void _showSetEditorDialog({
+    required int exIndex,
+    int? setIndex,
+    WorkoutSet? initialSet,
+  }) {
     final colors = context.appColors;
     final theme = Theme.of(context);
-    final lastSet = exercises[exIndex].sets.isNotEmpty ? exercises[exIndex].sets.last : null;
-    _weightController.text = lastSet == null ? "0" : _weightText(lastSet.weight);
-    _repsController.text = lastSet?.reps.toString() ?? "10";
+    final strings = AppStrings.of(context);
+    final exercise = exercises[exIndex];
+    final seed = initialSet ?? WorkoutSet();
+    final weightController = TextEditingController(
+      text: seed.weight == null
+          ? ""
+          : WeightUnitController.formatNumber(
+              WeightUnitController.fromKg(seed.weight!, _weightUnit),
+            ),
+    );
+    final durationController = TextEditingController(text: seed.duration?.toString() ?? "");
+    final customControllers = <String, TextEditingController>{
+      for (final field in exercise.customFields)
+        field: TextEditingController(text: seed.customValues[field] ?? ""),
+    };
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: colors.surface,
         title: Text(
-          AppStrings.of(context).addSet,
+          setIndex == null ? strings.addSet : strings.editSet,
           style: TextStyle(color: theme.colorScheme.primary),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: _weightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: _weightLabel(context),
-                labelStyle: const TextStyle(color: Colors.white70),
+            if (exercise.type == ExerciseType.weighted)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: weightController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: strings.weightLabel(WeightUnitController.shortLabel(_weightUnit)),
+                    labelStyle: const TextStyle(color: Colors.white70),
+                  ),
+                ),
               ),
-            ),
-            TextField(
-              controller: _repsController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: AppStrings.of(context).reps,
-                labelStyle: const TextStyle(color: Colors.white70),
+            if (exercise.type == ExerciseType.timed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: durationController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: strings.duration,
+                    labelStyle: const TextStyle(color: Colors.white70),
+                  ),
+                ),
               ),
-            ),
+            if (exercise.type == ExerciseType.free)
+              ...exercise.customFields.map((field) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: TextField(
+                    controller: customControllers[field],
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: field,
+                      labelStyle: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                );
+              }),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.of(context).cancel, style: const TextStyle(color: Colors.grey)),
+            child: Text(strings.cancel, style: const TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () {
-              final weight = _parseWeightInput(_weightController.text);
-              final reps = int.tryParse(_repsController.text);
-              if (weight == null || reps == null || reps <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(AppStrings.of(context).pleaseEnterValidNumbers),
-                    duration: const Duration(seconds: 1),
-                  )
-                );
-                return;
+              final nextSet = WorkoutSet(isCompleted: seed.isCompleted);
+              if (exercise.type == ExerciseType.weighted) {
+                final value = double.tryParse(weightController.text);
+                if (value == null || value < 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(strings.pleaseEnterValidNumbers),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                  return;
+                }
+                nextSet.weight = WeightUnitController.toKg(value, _weightUnit);
+              } else if (exercise.type == ExerciseType.timed) {
+                final value = int.tryParse(durationController.text);
+                if (value == null || value <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(strings.pleaseEnterValidNumbers),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                  return;
+                }
+                nextSet.duration = value;
+              } else {
+                for (final field in exercise.customFields) {
+                  final value = customControllers[field]!.text.trim();
+                  if (value.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(strings.completeExerciseFields),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                    return;
+                  }
+                  nextSet.customValues[field] = value;
+                }
               }
+
               setState(() {
-                exercises[exIndex].sets.add(WorkoutSet(weight: weight, reps: reps));
+                if (setIndex == null) {
+                  exercises[exIndex].sets.add(nextSet);
+                } else {
+                  exercises[exIndex].sets[setIndex] = nextSet;
+                }
               });
               if (exIndex >= _planCount) {
                 _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
               }
               _persistCompletionState();
+              _persistDailyWorkoutSnapshot();
               Navigator.pop(context);
             },
-            child: Text(AppStrings.of(context).add, style: TextStyle(color: theme.colorScheme.primary)),
+            child: Text(
+              setIndex == null ? strings.add : strings.save,
+              style: TextStyle(color: theme.colorScheme.primary),
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  void _showEditSetDialog(int exIndex, int setIndex) {
-    final colors = context.appColors;
-    final theme = Theme.of(context);
-    if (exIndex < 0 || exIndex >= exercises.length) return;
-    if (setIndex < 0 || setIndex >= exercises[exIndex].sets.length) return;
-    final set = exercises[exIndex].sets[setIndex];
-    _weightController.text = _weightText(set.weight);
-    _repsController.text = set.reps.toString();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: colors.surface,
-        title: Text(
-          AppStrings.of(context).editSet,
-          style: TextStyle(color: theme.colorScheme.primary),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _weightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: _weightLabel(context),
-                labelStyle: const TextStyle(color: Colors.white70),
-              ),
-            ),
-            TextField(
-              controller: _repsController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: AppStrings.of(context).reps,
-                labelStyle: const TextStyle(color: Colors.white70),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.of(context).cancel, style: const TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              final weight = _parseWeightInput(_weightController.text);
-              final reps = int.tryParse(_repsController.text);
-              if (weight == null || reps == null || reps <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(AppStrings.of(context).pleaseEnterValidNumbers),
-                    duration: const Duration(seconds: 1),
-                  )
-                );
-                return;
-              }
-              setState(() {
-                exercises[exIndex].sets[setIndex].weight = weight;
-                exercises[exIndex].sets[setIndex].reps = reps;
-              });
-              if (exIndex >= _planCount) {
-                _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
-              }
-              Navigator.pop(context);
-            },
-            child: Text(AppStrings.of(context).save, style: TextStyle(color: theme.colorScheme.primary)),
-          ),
-        ],
-      ),
-    );
+    ).whenComplete(() {
+      weightController.dispose();
+      durationController.dispose();
+      for (final controller in customControllers.values) {
+        controller.dispose();
+      }
+    });
   }
 
   void _deleteSet(int exIndex, int setIndex) {
@@ -987,15 +980,17 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       _saveExtraExerciseAt(exIndex - _planCount, exercises[exIndex]);
     }
     _persistCompletionState();
+    _persistDailyWorkoutSnapshot();
   }
 
   void _showAddExtraExerciseDialog() {
     final colors = context.appColors;
     final theme = Theme.of(context);
+    final strings = AppStrings.of(context);
     if (_planTitle == "Rest Day") {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(AppStrings.of(context).pleaseSelectPlanFirst),
+          content: Text(strings.pleaseSelectPlanFirst),
           duration: const Duration(seconds: 1),
         )
       );
@@ -1029,7 +1024,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                           Text(
-                            AppStrings.of(context).addExtraExercise,
+                            strings.addExtraExercise,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.5),
                               fontSize: 12,
@@ -1044,54 +1039,11 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                       ],
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: draft.nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: AppStrings.of(context).exerciseName,
-                        labelStyle: const TextStyle(color: Colors.white70),
-                      ),
-                      onChanged: (_) => setModalState(() {}),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: draft.weightController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: _weightLabel(context),
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: draft.repsController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: AppStrings.of(context).reps,
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: draft.setsController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: AppStrings.of(context).sets,
-                              labelStyle: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _ExerciseDraftForm(
+                      draft: draft,
+                      unit: _weightUnit,
+                      strings: strings,
+                      onChanged: () => setModalState(() {}),
                     ),
                     const SizedBox(height: 20),
                     SizedBox(
@@ -1102,7 +1054,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                           if (exercise == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(AppStrings.of(context).completeExerciseFields),
+                                content: Text(strings.completeExerciseFields),
                                 duration: const Duration(seconds: 1),
                               )
                             );
@@ -1250,48 +1202,321 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       ),
     );
   }
+
+}
+
+class _ExerciseDraftForm extends StatelessWidget {
+  const _ExerciseDraftForm({
+    required this.draft,
+    required this.unit,
+    required this.strings,
+    required this.onChanged,
+  });
+
+  final _ExerciseDraft draft;
+  final WeightUnit unit;
+  final AppStrings strings;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: draft.nameController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            labelText: strings.exerciseName,
+            labelStyle: const TextStyle(color: Colors.white70),
+          ),
+          onChanged: (_) => onChanged(),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<ExerciseType>(
+          value: draft.type,
+          decoration: InputDecoration(
+            labelText: strings.exerciseType,
+            labelStyle: const TextStyle(color: Colors.white70),
+          ),
+          dropdownColor: Theme.of(context).colorScheme.surface,
+          items: [
+            DropdownMenuItem(value: ExerciseType.free, child: Text(strings.freeExercise)),
+            DropdownMenuItem(value: ExerciseType.weighted, child: Text(strings.weightedExercise)),
+            DropdownMenuItem(value: ExerciseType.timed, child: Text(strings.timedExercise)),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            draft.setType(value);
+            onChanged();
+          },
+        ),
+        if (draft.type == ExerciseType.free) ...[
+          const SizedBox(height: 10),
+          Text(
+            strings.customFields,
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          ...List.generate(draft.customFields.length, (index) {
+            final field = draft.customFields[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: field.nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: strings.fieldName,
+                        labelStyle: const TextStyle(color: Colors.white70),
+                      ),
+                      onChanged: (_) => onChanged(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: field.valueController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: strings.fieldValue,
+                        labelStyle: const TextStyle(color: Colors.white70),
+                      ),
+                      onChanged: (_) => onChanged(),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      draft.removeCustomFieldAt(index);
+                      onChanged();
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                draft.addCustomField();
+                onChanged();
+              },
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(strings.addField),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: 160,
+              child: TextField(
+                controller: draft.setsController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: strings.sets,
+                  labelStyle: const TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+            ...draft.visibleFixedFields(strings, unit),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _ExerciseDraft {
-  final WeightUnit unit;
-  final TextEditingController nameController;
-  final TextEditingController weightController;
-  final TextEditingController repsController;
-  final TextEditingController setsController;
-
   _ExerciseDraft({
     required this.unit,
+    ExerciseType? type,
     String name = "",
-    String weight = "0",
-    String reps = "10",
     String sets = "3",
-  })  : nameController = TextEditingController(text: name),
+    String weight = "",
+    String duration = "",
+    List<_CustomFieldDraft>? customFields,
+  })  : type = type ?? ExerciseType.free,
+        nameController = TextEditingController(text: name),
+        setsController = TextEditingController(text: sets),
         weightController = TextEditingController(text: weight),
-        repsController = TextEditingController(text: reps),
-        setsController = TextEditingController(text: sets);
+        durationController = TextEditingController(text: duration),
+        customFields = customFields ?? [_CustomFieldDraft()];
+
+  final WeightUnit unit;
+  ExerciseType type;
+  final TextEditingController nameController;
+  final TextEditingController setsController;
+  final TextEditingController weightController;
+  final TextEditingController durationController;
+  final List<_CustomFieldDraft> customFields;
+
+  factory _ExerciseDraft.fromExercise(Exercise exercise, WeightUnit unit) {
+    final firstSet = exercise.sets.isNotEmpty ? exercise.sets.first : WorkoutSet();
+    return _ExerciseDraft(
+      unit: unit,
+      type: exercise.type,
+      name: exercise.name,
+      sets: exercise.sets.isEmpty ? "1" : exercise.sets.length.toString(),
+      weight: firstSet.weight == null
+          ? ""
+          : WeightUnitController.formatNumber(
+              WeightUnitController.fromKg(firstSet.weight!, unit),
+            ),
+      duration: firstSet.duration?.toString() ?? "",
+      customFields: exercise.type == ExerciseType.free
+          ? exercise.customFields
+              .map(
+                (field) => _CustomFieldDraft(
+                  name: field,
+                  value: firstSet.customValues[field] ?? "",
+                ),
+              )
+              .toList()
+          : [],
+    );
+  }
+
+  void setType(ExerciseType value) {
+    type = value;
+    if (value == ExerciseType.free && customFields.isEmpty) {
+      customFields.add(_CustomFieldDraft());
+    }
+  }
+
+  void addCustomField() {
+    customFields.add(_CustomFieldDraft());
+  }
+
+  void removeCustomFieldAt(int index) {
+    if (index < 0 || index >= customFields.length) return;
+    final field = customFields.removeAt(index);
+    field.dispose();
+    if (customFields.isEmpty) {
+      customFields.add(_CustomFieldDraft());
+    }
+  }
+
+  List<Widget> visibleFixedFields(AppStrings strings, WeightUnit unit) {
+    if (type == ExerciseType.weighted) {
+      return [
+        SizedBox(
+          width: 160,
+          child: TextField(
+            controller: weightController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: strings.weightLabel(WeightUnitController.shortLabel(unit)),
+              labelStyle: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ];
+    }
+    if (type == ExerciseType.timed) {
+      return [
+        SizedBox(
+          width: 160,
+          child: TextField(
+            controller: durationController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: strings.duration,
+              labelStyle: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ];
+    }
+    return const [];
+  }
 
   Exercise? toExercise() {
     final name = nameController.text.trim();
-    final weight = double.tryParse(weightController.text);
-    final reps = int.tryParse(repsController.text);
-    final sets = int.tryParse(setsController.text);
-
-    if (name.isEmpty || weight == null || reps == null || sets == null) {
+    final setCount = int.tryParse(setsController.text);
+    if (name.isEmpty || setCount == null || setCount <= 0) {
       return null;
     }
-    if (reps <= 0 || sets <= 0 || weight < 0) return null;
-    final weightInKg = WeightUnitController.toKg(weight, unit);
 
+    final set = WorkoutSet();
+    if (type == ExerciseType.weighted) {
+      final value = double.tryParse(weightController.text);
+      if (value == null || value < 0) {
+        return null;
+      }
+      set.weight = WeightUnitController.toKg(value, unit);
+      return Exercise(
+        name: name,
+        type: type,
+        sets: List.generate(setCount, (_) => set.copy()),
+      );
+    }
+
+    if (type == ExerciseType.timed) {
+      final value = int.tryParse(durationController.text);
+      if (value == null || value <= 0) {
+        return null;
+      }
+      set.duration = value;
+      return Exercise(
+        name: name,
+        type: type,
+        sets: List.generate(setCount, (_) => set.copy()),
+      );
+    }
+
+    final fields = <String>[];
+    final values = <String, String>{};
+    for (final fieldDraft in customFields) {
+      final fieldName = fieldDraft.nameController.text.trim();
+      final fieldValue = fieldDraft.valueController.text.trim();
+      if (fieldName.isEmpty || fieldValue.isEmpty) continue;
+      fields.add(fieldName);
+      values[fieldName] = fieldValue;
+    }
+    if (fields.isEmpty) return null;
+    set.customValues = values;
     return Exercise(
       name: name,
-      sets: List.generate(sets, (_) => WorkoutSet(weight: weightInKg, reps: reps)),
+      type: type,
+      customFields: fields,
+      sets: List.generate(setCount, (_) => set.copy()),
     );
   }
 
   void dispose() {
     nameController.dispose();
-    weightController.dispose();
-    repsController.dispose();
     setsController.dispose();
+    weightController.dispose();
+    durationController.dispose();
+    for (final field in customFields) {
+      field.dispose();
+    }
+  }
+}
+
+class _CustomFieldDraft {
+  _CustomFieldDraft({
+    String name = "",
+    String value = "",
+  })  : nameController = TextEditingController(text: name),
+        valueController = TextEditingController(text: value);
+
+  final TextEditingController nameController;
+  final TextEditingController valueController;
+
+  void dispose() {
+    nameController.dispose();
+    valueController.dispose();
   }
 }

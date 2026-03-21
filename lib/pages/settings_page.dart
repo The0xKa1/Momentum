@@ -209,6 +209,8 @@ class _ThemeSchemeSetting extends StatelessWidget {
 
   String _presetLabel(AppStrings strings, String id) {
     switch (id) {
+      case 'spider_verse':
+        return strings.presetSpiderVerse;
       case 'ember_core':
         return strings.presetEmberCore;
       case 'glacier_mint':

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String defaultThemePresetId = 'midnight_orchid';
+const String defaultThemePresetId = 'spider_verse';
 
 @immutable
 class AppThemeConfig {
@@ -122,6 +122,12 @@ class AppThemeController {
 
   static const List<AppThemeConfig> presets = [
     AppThemeConfig(
+      id: 'spider_verse',
+      primary: Color(0xFFFF335C),
+      background: Color(0xFF0A0F1F),
+      surface: Color(0xFF151D35),
+    ),
+    AppThemeConfig(
       id: 'midnight_orchid',
       primary: Color(0xFFBB86FC),
       background: Color(0xFF121212),
@@ -159,7 +165,11 @@ class AppThemeController {
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final presetId = prefs.getString(_presetKey) ?? defaultThemePresetId;
+    var presetId = prefs.getString(_presetKey) ?? defaultThemePresetId;
+    if (presetId == 'midnight_orchid') {
+      presetId = defaultThemePresetId;
+      await prefs.setString(_presetKey, presetId);
+    }
     if (presetId == 'custom') {
       final fallback = _presetById(defaultThemePresetId);
       theme.value = AppThemeConfig(

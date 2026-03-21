@@ -13,6 +13,7 @@ class HomeEntryPage extends StatefulWidget {
 }
 
 final GlobalKey<WorkoutPageState> workoutKey = GlobalKey<WorkoutPageState>();
+final GlobalKey<PlanPageState> planKey = GlobalKey<PlanPageState>();
 
 class _HomeEntryPageState extends State<HomeEntryPage> {
   int _currentIndex = 0; // 当前选中的是第几个图标
@@ -25,7 +26,7 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
     super.initState();
     _pages = [
       WorkoutPage(key: workoutKey),    // 0: 训练
-      const PlanPage(),       // 1: 计划 (这里修改了！)
+      PlanPage(key: planKey),       // 1: 计划 (这里修改了！)
       const SettingsPage(), // 2: 设置/关于
     ];
   }
@@ -53,6 +54,9 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
                   onDestinationSelected: (int index) {
                     if (index == 0) {
                       workoutKey.currentState?.refreshData();
+                    }
+                    if (index == 1) {
+                      planKey.currentState?.refreshData();
                     }
                     setState(() {
                       _currentIndex = index; // 刷新界面

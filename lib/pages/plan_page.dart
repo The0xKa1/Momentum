@@ -12,13 +12,14 @@ class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
 
   @override
-  State<PlanPage> createState() => _PlanPageState();
+  State<PlanPage> createState() => PlanPageState();
 }
 
-class _PlanPageState extends State<PlanPage> {
+class PlanPageState extends State<PlanPage> {
   static const String _prefsPlanTemplatesKey = "plan_templates";
   static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
   static const String _prefsHiddenPlanKey = "hidden_plan_today";
+  static const String _prefsDailyWorkoutSnapshotKey = "daily_workout_snapshot";
 
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
@@ -38,6 +39,13 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void dispose() {
     super.dispose();
+  }
+
+  void refreshData() {
+    _loadEventsFromPrefs();
+    _loadCompletedFromPrefs();
+    _loadTemplatesFromPrefs();
+    _loadSelectedDayDetails();
   }
 
  @override
@@ -163,22 +171,6 @@ class _PlanPageState extends State<PlanPage> {
     });
   }
 
-  List<Exercise> _parseExercises(List<dynamic> rawExercises) {
-    return rawExercises.map((raw) {
-      final data = Map<String, dynamic>.from(raw as Map);
-      final name = (data['name'] ?? '').toString();
-      final rawSets = List<dynamic>.from(data['sets'] ?? []);
-      final sets = rawSets.map((rawSet) {
-        final setData = Map<String, dynamic>.from(rawSet as Map);
-        return WorkoutSet(
-          weight: (setData['weight'] ?? 0).toDouble(),
-          reps: (setData['reps'] ?? 0).toInt(),
-        );
-      }).toList();
-      return Exercise(name: name, sets: sets);
-    }).toList();
-  }
-
   Future<void> _loadSelectedDayDetails() async {
     final day = _selectedDay ?? _focusedDay;
     final dateKey = _normalizeDate(day);
@@ -192,17 +184,35 @@ class _PlanPageState extends State<PlanPage> {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    final snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
     final templateString = prefs.getString(_prefsPlanTemplatesKey);
     final extrasString = prefs.getString(_prefsDailyExtrasKey);
     final hiddenString = prefs.getString(_prefsHiddenPlanKey);
     final key = dateKey.toIso8601String();
     final planName = planNames.first;
 
+    if (snapshotString != null) {
+      final snapshotMap = Map<String, dynamic>.from(json.decode(snapshotString));
+      final rawSnapshot = snapshotMap[key];
+      if (rawSnapshot is Map) {
+        final snapshot = Map<String, dynamic>.from(rawSnapshot);
+        final snapshotPlanTitle = (snapshot['planTitle'] ?? '').toString();
+        final rawExercises = snapshot['exercises'];
+        if (snapshotPlanTitle == planName && rawExercises is List) {
+          if (!mounted) return;
+          setState(() {
+            _selectedDayExercises = parseExercises(List<dynamic>.from(rawExercises));
+          });
+          return;
+        }
+      }
+    }
+
     List<Exercise> planExercises = [];
     if (templateString != null) {
       final templates = Map<String, dynamic>.from(json.decode(templateString));
       if (templates.containsKey(planName)) {
-        planExercises = _parseExercises(List<dynamic>.from(templates[planName] ?? []));
+        planExercises = parseExercises(List<dynamic>.from(templates[planName] ?? []));
       }
     }
 
@@ -221,7 +231,7 @@ class _PlanPageState extends State<PlanPage> {
       final extrasMap = Map<String, dynamic>.from(json.decode(extrasString));
       final rawExtras = extrasMap[key];
       if (rawExtras is List) {
-        extraExercises = _parseExercises(List<dynamic>.from(rawExtras));
+        extraExercises = parseExercises(List<dynamic>.from(rawExtras));
       }
     }
 
@@ -891,7 +901,6 @@ class _PlanPageState extends State<PlanPage> {
         itemBuilder: (context, index) {
           final exercise = _selectedDayExercises[index];
           final totalSets = exercise.sets.length;
-          final totalReps = exercise.sets.fold<int>(0, (sum, set) => sum + set.reps);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -905,7 +914,7 @@ class _PlanPageState extends State<PlanPage> {
               ),
               const SizedBox(height: 6),
               Text(
-                '${strings.sets}: $totalSets  ${strings.reps}: $totalReps',
+                '${_exerciseTypeText(strings, exercise)}  ${strings.sets}: $totalSets',
                 style: TextStyle(color: colors.subtleText, fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -920,7 +929,7 @@ class _PlanPageState extends State<PlanPage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '${WeightUnitController.formatWeight(set.weight, unit)} x ${set.reps}',
+                      _buildSetSummary(set, unit),
                       style: TextStyle(color: colors.mutedText, fontSize: 12),
                     ),
                   );
@@ -931,5 +940,30 @@ class _PlanPageState extends State<PlanPage> {
         },
       ),
     );
+  }
+
+  String _exerciseTypeText(AppStrings strings, Exercise exercise) {
+    switch (exercise.type) {
+      case ExerciseType.weighted:
+        return strings.weightedExercise;
+      case ExerciseType.timed:
+        return strings.timedExercise;
+      case ExerciseType.free:
+        return strings.freeExercise;
+    }
+  }
+
+  String _buildSetSummary(WorkoutSet set, WeightUnit unit) {
+    if (set.customValues.isNotEmpty) {
+      return set.customValues.entries.map((entry) => '${entry.key}: ${entry.value}').join(' · ');
+    }
+    final parts = <String>[];
+    if (set.weight != null) {
+      parts.add(WeightUnitController.formatWeight(set.weight!, unit));
+    }
+    if (set.duration != null) {
+      parts.add('${set.duration}s');
+    }
+    return parts.join(' · ');
   }
 }

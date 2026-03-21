@@ -5,38 +5,104 @@ class ExerciseLibrary {
   static final Map<String, List<Exercise>> templates = {
     // --- 练腿 ---
     "Legs": [
-      Exercise(name: "Barbell Squat", sets: [WorkoutSet(weight: 60, reps: 12), WorkoutSet(weight: 80, reps: 10)]),
-      Exercise(name: "Leg Press", sets: [WorkoutSet(weight: 150, reps: 12)]),
+      Exercise(
+        name: "Barbell Squat",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [
+          WorkoutSet(customValues: {"重量": "60", "次数": "12"}),
+          WorkoutSet(customValues: {"重量": "80", "次数": "10"}),
+        ],
+      ),
+      Exercise(
+        name: "Leg Press",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "150", "次数": "12"})],
+      ),
     ],
 
     // --- 推胸 ---
     "Chest": [
-      Exercise(name: "Bench Press", sets: [WorkoutSet(weight: 60, reps: 10), WorkoutSet(weight: 80, reps: 8)]),
-      Exercise(name: "Incline Dumbbell Press", sets: [WorkoutSet(weight: 20, reps: 12)]),
+      Exercise(
+        name: "Bench Press",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [
+          WorkoutSet(customValues: {"重量": "60", "次数": "10"}),
+          WorkoutSet(customValues: {"重量": "80", "次数": "8"}),
+        ],
+      ),
+      Exercise(
+        name: "Incline Dumbbell Press",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "20", "次数": "12"})],
+      ),
     ],
 
     // --- 拉背 ---
     "Back": [
-      Exercise(name: "Deadlift", sets: [WorkoutSet(weight: 100, reps: 5)]),
-      Exercise(name: "Lat Pulldown", sets: [WorkoutSet(weight: 40, reps: 12)]),
+      Exercise(
+        name: "Deadlift",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "100", "次数": "5"})],
+      ),
+      Exercise(
+        name: "Lat Pulldown",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "40", "次数": "12"})],
+      ),
     ],
 
     // --- 肩部 ---
     "Shoulders": [
-      Exercise(name: "Overhead Press", sets: [WorkoutSet(weight: 40, reps: 10)]),
-      Exercise(name: "Lateral Raises", sets: [WorkoutSet(weight: 10, reps: 15)]),
+      Exercise(
+        name: "Overhead Press",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "40", "次数": "10"})],
+      ),
+      Exercise(
+        name: "Lateral Raises",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "10", "次数": "15"})],
+      ),
     ],
 
     // --- 手臂 ---
     "Arms": [
-      Exercise(name: "Bicep Curls", sets: [WorkoutSet(weight: 15, reps: 12)]),
-      Exercise(name: "Tricep Extensions", sets: [WorkoutSet(weight: 15, reps: 12)]),
+      Exercise(
+        name: "Bicep Curls",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "15", "次数": "12"})],
+      ),
+      Exercise(
+        name: "Tricep Extensions",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "15", "次数": "12"})],
+      ),
     ],
     
     // --- 三头 (用于组合测试: Chest & Triceps) ---
     "Triceps": [
-      Exercise(name: "Tricep Dips", sets: [WorkoutSet(weight: 0, reps: 15)]),
-      Exercise(name: "Skull Crushers", sets: [WorkoutSet(weight: 20, reps: 12)]),
+      Exercise(
+        name: "Tricep Dips",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "0", "次数": "15"})],
+      ),
+      Exercise(
+        name: "Skull Crushers",
+        type: ExerciseType.free,
+        customFields: const ["重量", "次数"],
+        sets: [WorkoutSet(customValues: {"重量": "20", "次数": "12"})],
+      ),
     ],
   };
 
@@ -64,9 +130,9 @@ class ExerciseLibrary {
         return templates[key]!
             .map((e) => Exercise(
                   name: e.name,
-                  sets: e.sets
-                      .map((s) => WorkoutSet(weight: s.weight, reps: s.reps))
-                      .toList(),
+                  type: e.type,
+                  customFields: List<String>.from(e.customFields),
+                  sets: e.sets.map((s) => s.copy()).toList(),
                 ))
             .toList();
       }
