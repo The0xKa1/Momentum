@@ -649,7 +649,23 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     decodedMap[key] = list;
 
     await prefs.setString(_prefsHiddenPlanKey, json.encode(decodedMap));
-    await _loadTodayPlan();
+    int planIndex = -1;
+    for (int i = 0; i < _planCount && i < exercises.length; i++) {
+      if (exercises[i].name == exerciseName) {
+        planIndex = i;
+        break;
+      }
+    }
+    if (planIndex >= 0) {
+      setState(() {
+        exercises.removeAt(planIndex);
+        _planCount = (_planCount - 1).clamp(0, exercises.length);
+      });
+      await _persistCompletionState();
+      await _persistDailyWorkoutSnapshot();
+    } else {
+      await _loadTodayPlan();
+    }
   }
 
   /// 删除当日额外动作中的某一项
@@ -667,7 +683,16 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     decodedMap[key] = list;
 
     await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
-    await _loadTodayPlan();
+    final exerciseIndex = _planCount + extraIndex;
+    if (exerciseIndex >= 0 && exerciseIndex < exercises.length) {
+      setState(() {
+        exercises.removeAt(exerciseIndex);
+      });
+      await _persistCompletionState();
+      await _persistDailyWorkoutSnapshot();
+    } else {
+      await _loadTodayPlan();
+    }
   }
 
   /// 编辑当日额外动作中的某一项
