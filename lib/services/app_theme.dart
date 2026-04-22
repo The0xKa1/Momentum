@@ -21,11 +21,11 @@ class AppThemeConfig {
 
   Color get surfaceElevated => Color.alphaBlend(Colors.white.withValues(alpha: 0.06), surface);
   Color get accentForeground => primary.computeLuminance() > 0.45 ? Colors.black : Colors.white;
-  Color get mutedText => Colors.white.withValues(alpha: 0.68);
-  Color get subtleText => Colors.white.withValues(alpha: 0.5);
-  Color get border => Colors.white.withValues(alpha: 0.08);
-  Color get softFill => Colors.white.withValues(alpha: 0.05);
-  Color get accentSoft => primary.withValues(alpha: 0.2);
+  Color get mutedText => Colors.white.withValues(alpha: 0.72);
+  Color get subtleText => Colors.white.withValues(alpha: 0.50);
+  Color get border => Colors.white.withValues(alpha: 0.10);
+  Color get softFill => Colors.white.withValues(alpha: 0.06);
+  Color get accentSoft => primary.withValues(alpha: 0.18);
 
   AppThemeConfig copyWith({
     String? id,
@@ -123,9 +123,9 @@ class AppThemeController {
   static const List<AppThemeConfig> presets = [
     AppThemeConfig(
       id: 'spider_verse',
-      primary: Color(0xFFFF335C),
-      background: Color(0xFF0A0F1F),
-      surface: Color(0xFF151D35),
+      primary: Color(0xFFFF3B5F),
+      background: Color(0xFF07080C),
+      surface: Color(0xFF151821),
     ),
     AppThemeConfig(
       id: 'midnight_orchid',
@@ -135,21 +135,21 @@ class AppThemeController {
     ),
     AppThemeConfig(
       id: 'ember_core',
-      primary: Color(0xFFFF7A59),
-      background: Color(0xFF181310),
-      surface: Color(0xFF261B17),
+      primary: Color(0xFFFF8A5B),
+      background: Color(0xFF100D0B),
+      surface: Color(0xFF201813),
     ),
     AppThemeConfig(
       id: 'glacier_mint',
       primary: Color(0xFF5EEAD4),
-      background: Color(0xFF071A1D),
-      surface: Color(0xFF103036),
+      background: Color(0xFF061214),
+      surface: Color(0xFF102426),
     ),
     AppThemeConfig(
       id: 'volt_lime',
       primary: Color(0xFFC6FF4D),
-      background: Color(0xFF11140B),
-      surface: Color(0xFF1E2612),
+      background: Color(0xFF0B0E08),
+      surface: Color(0xFF171D10),
     ),
   ];
 
@@ -230,9 +230,16 @@ class AppThemeController {
       canvasColor: config.background,
       cardColor: config.surface,
       dialogTheme: DialogThemeData(backgroundColor: config.surface),
+      dividerTheme: DividerThemeData(
+        color: config.border,
+        thickness: 1,
+        space: 1,
+      ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: config.surface,
         contentTextStyle: const TextStyle(color: Colors.white),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -243,29 +250,68 @@ class AppThemeController {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: config.primary,
         foregroundColor: config.accentForeground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        elevation: 10,
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: config.surface,
         surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.05),
         labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
         hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-        enabledBorder: UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
         ),
-        focusedBorder: UnderlineInputBorder(
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: config.primary),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: config.primary,
+          foregroundColor: config.accentForeground,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: config.primary,
-          side: BorderSide(color: config.primary),
+          foregroundColor: Colors.white,
+          side: BorderSide(color: config.border),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: config.primary),
+        style: TextButton.styleFrom(
+          foregroundColor: config.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.transparent,
+        indicatorColor: config.primary,
+        elevation: 0,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.54),
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+          );
+        }),
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {

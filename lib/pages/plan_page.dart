@@ -7,6 +7,7 @@ import 'plan_settings_page.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/weight_unit_settings.dart';
+import '../widgets/premium_widgets.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -489,76 +490,66 @@ class PlanPageState extends State<PlanPage> {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            // 1. 日历组件
-            _buildCalendar(),
-            
-            const SizedBox(height: 20),
-            
-            // 2. 选中日期的详细计划
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(30),
-                    topRight: Radius.circular(30),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          AppStrings.of(context).schedule,
-                          style: TextStyle(
-                            color: colors.subtleText,
-                            fontSize: 12,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.bold,
+        child: PremiumPageShell(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Column(
+            children: [
+              PremiumSurface(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+                radius: 30,
+                child: _buildCalendar(),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: PremiumSurface(
+                  padding: const EdgeInsets.all(20),
+                  radius: 30,
+                  color: colors.surface.withValues(alpha: 0.82),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          SectionEyebrow(AppStrings.of(context).schedule),
+                          PremiumIconButton(
+                            icon: Icons.tune,
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
+                              );
+                              _loadTemplatesFromPrefs();
+                              _loadSelectedDayDetails();
+                            },
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.tune, color: Colors.grey, size: 20),
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const PlanSettingsPage()),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isNarrow = constraints.maxWidth < 720;
+                            if (isNarrow) {
+                              return _buildCompactSchedulePane();
+                            }
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: _buildEventList()),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildPlanDetails()),
+                              ],
                             );
-                            _loadTemplatesFromPrefs();
-                            _loadSelectedDayDetails();
                           },
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isNarrow = constraints.maxWidth < 720;
-                          if (isNarrow) {
-                            return _buildCompactSchedulePane();
-                          }
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: _buildEventList()),
-                              const SizedBox(width: 16),
-                              Expanded(child: _buildPlanDetails()),
-                            ],
-                          );
-                        },
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       // 添加计划的浮动按钮
@@ -589,13 +580,7 @@ class PlanPageState extends State<PlanPage> {
                 icon: const Icon(Icons.open_in_full, size: 18),
                 label: Text(strings.viewPlanDetails),
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: colors.border),
                   backgroundColor: colors.surfaceElevated,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
                 ),
               ),
             ),
@@ -619,12 +604,12 @@ class PlanPageState extends State<PlanPage> {
       calendarStyle: CalendarStyle(
         // 1. 文字颜色设置
         defaultTextStyle: const TextStyle(color: Colors.white),
-        weekendTextStyle: const TextStyle(color: Colors.grey),
-        outsideTextStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)), // 非本月日期颜色
-        
+        weekendTextStyle: TextStyle(color: colors.mutedText),
+        outsideTextStyle: TextStyle(color: Colors.white.withValues(alpha: 0.20)), // 非本月日期颜色
+
         // 2. 装饰样式
         todayDecoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: Colors.white.withValues(alpha: 0.08),
           shape: BoxShape.circle,
         ),
         selectedDecoration: BoxDecoration(
@@ -639,6 +624,7 @@ class PlanPageState extends State<PlanPage> {
           color: Colors.grey,
           shape: BoxShape.circle,
         ),
+        cellMargin: const EdgeInsets.all(5),
       ),
       // --- 修正部分结束 ---
 
@@ -646,19 +632,19 @@ class PlanPageState extends State<PlanPage> {
       headerStyle: HeaderStyle(
         titleCentered: true,
         formatButtonVisible: false,
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 20,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w900,
           color: Colors.white,
         ),
-        leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white),
-        rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white),
+        leftChevronIcon: Icon(Icons.chevron_left, color: colors.mutedText),
+        rightChevronIcon: Icon(Icons.chevron_right, color: colors.mutedText),
       ),
       
       // 星期栏样式 (Mon, Tue, Wed...)
-      daysOfWeekStyle: const DaysOfWeekStyle(
-        weekdayStyle: TextStyle(color: Colors.white70),
-        weekendStyle: TextStyle(color: Colors.grey),
+      daysOfWeekStyle: DaysOfWeekStyle(
+        weekdayStyle: TextStyle(color: colors.subtleText, fontWeight: FontWeight.w700),
+        weekendStyle: TextStyle(color: colors.subtleText, fontWeight: FontWeight.w700),
       ),
 
       // 交互逻辑
@@ -716,12 +702,12 @@ class PlanPageState extends State<PlanPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 40),
-            Icon(Icons.hotel_class, size: 48, color: Colors.white.withValues(alpha: 0.2)),
+            Icon(Icons.hotel_class, size: 48, color: theme.colorScheme.primary.withValues(alpha: 0.55)),
             const SizedBox(height: 16),
-                Text(
-                  AppStrings.of(context).restDay,
+            Text(
+              AppStrings.of(context).restDay,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: colors.mutedText,
                 fontSize: 18,
               ),
             ),
@@ -793,9 +779,11 @@ class PlanPageState extends State<PlanPage> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colors.border),
+                color: colors.surfaceElevated,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isCompleted ? Colors.green.withValues(alpha: 0.28) : colors.border,
+                ),
               ),
               child: Row(
                 children: [
@@ -839,25 +827,14 @@ class PlanPageState extends State<PlanPage> {
     final selectedDay = _selectedDay;
     final planName = selectedDay == null ? null : (_getEventsForDay(selectedDay).isEmpty ? null : _getEventsForDay(selectedDay).first);
 
-    return Container(
+    return PremiumSurface(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.border),
-      ),
+      radius: 22,
+      color: colors.surfaceElevated,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            strings.planDetails,
-            style: TextStyle(
-              color: colors.subtleText,
-              fontSize: 12,
-              letterSpacing: 1.5,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          SectionEyebrow(strings.planDetails),
           const SizedBox(height: 10),
           if (planName != null)
             Text(

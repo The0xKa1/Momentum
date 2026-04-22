@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_entry.dart'; // 确保引用了你的主入口文件
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
+import '../widgets/premium_widgets.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -102,57 +103,59 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 1. Logo 图形部分
-                Row(
+      body: PremiumPageShell(
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return PremiumSurface(
+                padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 46),
+                radius: 32,
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end, // 底部对齐
                   children: [
-                    _buildBar(_bar1Height.value, 0.6),
-                    const SizedBox(width: 12),
-                    _buildBar(_bar2Height.value, 0.8),
-                    const SizedBox(width: 12),
-                    _buildBar(_bar3Height.value, 1.0),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end, // 底部对齐
+                      children: [
+                        _buildBar(_bar1Height.value, 0.6),
+                        const SizedBox(width: 12),
+                        _buildBar(_bar2Height.value, 0.8),
+                        const SizedBox(width: 12),
+                        _buildBar(_bar3Height.value, 1.0),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
+                    Opacity(
+                      opacity: _textOpacity.value,
+                      child: Column(
+                        children: [
+                          const Text(
+                            "MOMENTUM",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900, // 特粗
+                              letterSpacing: 4.0, // 宽间距
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            AppStrings.of(context).splashSubtitle,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.4),
+                              fontSize: 10,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                
-                const SizedBox(height: 40),
-
-                // 2. 文字部分
-                Opacity(
-                  opacity: _textOpacity.value,
-                  child: Column(
-                    children: [
-                      const Text(
-                        "MOMENTUM",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900, // 特粗
-                          letterSpacing: 4.0, // 宽间距
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        AppStrings.of(context).splashSubtitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 10,
-                          letterSpacing: 2.0,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -166,11 +169,11 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
       height: height, // 高度是动态的
       decoration: BoxDecoration(
         color: primary.withValues(alpha: opacity),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         boxShadow: [
           BoxShadow(
-            color: primary.withValues(alpha: 0.3),
-            blurRadius: 10,
+            color: primary.withValues(alpha: 0.34),
+            blurRadius: 16,
             spreadRadius: 1,
           )
         ],

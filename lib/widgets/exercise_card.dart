@@ -4,6 +4,7 @@ import '../models/workout_model.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/weight_unit_settings.dart';
+import 'premium_widgets.dart';
 
 class ExerciseCard extends StatelessWidget {
   final Exercise exercise;
@@ -37,50 +38,57 @@ class ExerciseCard extends StatelessWidget {
     final totalSets = exercise.sets.length;
     final completedSets = exercise.sets.where((s) => s.isCompleted).length;
 
-    return Container(
+    final progress = totalSets == 0 ? 0.0 : completedSets / totalSets;
+
+    return PremiumSurface(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.all(18),
+      radius: 26,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.25)),
+                ),
+                child: Icon(_typeIcon(), color: theme.colorScheme.primary, size: 21),
+              ),
+              const SizedBox(width: 14),
               Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       exercise.name,
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
                     ),
-                    _buildTag(_typeLabel(strings), theme.colorScheme.primary, colors.accentForeground),
-                    if (isExtra)
-                      _buildTag("EXTRA", colors.accentSoft, theme.colorScheme.primary),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildTag(_typeLabel(strings), theme.colorScheme.primary, colors.accentForeground),
+                        if (isExtra) _buildTag("EXTRA", colors.accentSoft, theme.colorScheme.primary),
+                      ],
+                    ),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               (onRemove != null || onEdit != null)
                   ? PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz, color: Colors.grey),
+                      icon: Icon(Icons.more_horiz, color: colors.mutedText),
                       color: colors.surfaceElevated,
                       onSelected: (value) {
                         if (value == 'remove') onRemove?.call();
@@ -102,7 +110,7 @@ class ExerciseCard extends StatelessWidget {
                   : const SizedBox(width: 40),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -119,20 +127,30 @@ class ExerciseCard extends StatelessWidget {
                 _buildStatChip(strings.customFields, exercise.customFields.join(" / ")),
             ],
           ),
-          const SizedBox(height: 12),
-          Divider(color: colors.border),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 5,
+              value: progress,
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+            ),
+          ),
+          const SizedBox(height: 16),
           ...List.generate(exercise.sets.length, (index) {
             final set = exercise.sets[index];
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               decoration: BoxDecoration(
                 color: set.isCompleted
                     ? Colors.green.withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colors.border),
+                    : Colors.white.withValues(alpha: 0.045),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: set.isCompleted ? Colors.green.withValues(alpha: 0.24) : colors.border,
+                ),
               ),
               child: Row(
                 children: [
@@ -141,8 +159,10 @@ class ExerciseCard extends StatelessWidget {
                     height: 28,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(8),
+                      color: set.isCompleted
+                          ? Colors.green.withValues(alpha: 0.16)
+                          : Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       "${index + 1}",
@@ -182,32 +202,41 @@ class ExerciseCard extends StatelessWidget {
                       ],
                     ),
                   SizedBox(
-                    width: 40,
-                    child: Checkbox(
-                      value: set.isCompleted,
-                      activeColor: theme.colorScheme.primary,
-                      checkColor: colors.accentForeground,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      onChanged: (_) => onSetToggle(index),
+                    width: 42,
+                    child: IconButton(
+                      onPressed: () => onSetToggle(index),
+                      icon: Icon(
+                        set.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                        color: set.isCompleted ? Colors.green : colors.subtleText,
+                      ),
                     ),
                   ),
                 ],
               ),
             );
           }),
-          Center(
-            child: TextButton.icon(
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
               onPressed: onAddSet,
-              icon: const Icon(Icons.add, size: 16, color: Colors.grey),
-              label: const Text(
-                "Add Set",
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(strings.addSet),
             ),
           ),
         ],
       ),
     );
+  }
+
+  IconData _typeIcon() {
+    switch (exercise.type) {
+      case ExerciseType.weighted:
+        return Icons.fitness_center;
+      case ExerciseType.timed:
+        return Icons.timer_outlined;
+      case ExerciseType.free:
+        return Icons.auto_awesome;
+    }
   }
 
   Widget _buildTag(String text, Color background, Color foreground) {

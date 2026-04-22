@@ -7,6 +7,7 @@ import '../models/workout_model.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/weight_unit_settings.dart';
+import '../widgets/premium_widgets.dart';
 
 class PlanSettingsPage extends StatefulWidget {
   const PlanSettingsPage({super.key});
@@ -256,55 +257,72 @@ class _PlanSettingsPageState extends State<PlanSettingsPage> {
         backgroundColor: theme.colorScheme.primary,
         child: Icon(Icons.add, color: colors.accentForeground),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_templates.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: Text(
-                AppStrings.of(context).noPlansYet,
-                style: TextStyle(color: colors.subtleText),
-                textAlign: TextAlign.center,
-              ),
-            )
-          else
-            ..._templates.entries.map((entry) {
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
+      body: PremiumPageShell(
+        padding: EdgeInsets.zero,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+          children: [
+            if (_templates.isEmpty)
+              PremiumSurface(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 42),
+                radius: 26,
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Text(
-                        entry.key,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.grey),
-                      onPressed: () => _openEditPlan(
-                        existingName: entry.key,
-                        existingExercises: entry.value,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                      onPressed: () => _deletePlan(entry.key),
+                    Icon(Icons.playlist_add, color: theme.colorScheme.primary, size: 46),
+                    const SizedBox(height: 14),
+                    Text(
+                      AppStrings.of(context).noPlansYet,
+                      style: TextStyle(color: colors.mutedText, fontWeight: FontWeight.w700),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
-              );
-            }),
-        ],
+              )
+            else
+              ..._templates.entries.map((entry) {
+                return PremiumSurface(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  radius: 22,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(Icons.event_note, color: theme.colorScheme.primary, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.edit, color: colors.mutedText),
+                        onPressed: () => _openEditPlan(
+                          existingName: entry.key,
+                          existingExercises: entry.value,
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete_outline, color: colors.mutedText),
+                        onPressed: () => _deletePlan(entry.key),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }
@@ -336,7 +354,7 @@ class _ExerciseDraftForm extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<ExerciseType>(
-          value: draft.type,
+          initialValue: draft.type,
           decoration: InputDecoration(labelText: strings.exerciseType),
           dropdownColor: Theme.of(context).colorScheme.surface,
           items: [

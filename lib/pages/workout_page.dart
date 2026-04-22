@@ -20,6 +20,7 @@ import '../services/weight_unit_settings.dart';
 // 引入拆分出的组件模块
 import '../widgets/exercise_card.dart';
 import '../widgets/rest_timer_panel.dart';
+import '../widgets/premium_widgets.dart';
 
 class WorkoutPage extends StatefulWidget {
   const WorkoutPage({super.key});
@@ -65,6 +66,19 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   WeightUnit get _weightUnit => WeightUnitController.unit.value;
+
+  int get _totalSetCount => exercises.fold<int>(0, (sum, exercise) => sum + exercise.sets.length);
+
+  int get _completedSetCount => exercises.fold<int>(
+        0,
+        (sum, exercise) => sum + exercise.sets.where((set) => set.isCompleted).length,
+      );
+
+  double get _completionProgress {
+    final total = _totalSetCount;
+    if (total == 0) return 0;
+    return _completedSetCount / total;
+  }
 
   @override
   void initState() {
@@ -1118,6 +1132,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin 要求
     
+    final colors = context.appColors;
     return Scaffold(
       floatingActionButton: _isResting ? null : FloatingActionButton(
         onPressed: _showAddExtraExerciseDialog,
@@ -1125,60 +1140,115 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
         child: Icon(Icons.add, color: context.appColors.accentForeground),
       ),
       body: SafeArea(
-        child: Stack(
-          children: [
-            Padding(
-              padding: EdgeInsets.only(bottom: _isResting ? 100 : 0),
-              child: CustomScrollView(
-                slivers: [
-                  _buildHeaderSection(),
-                  _buildMainContent(),
-                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                ],
-              ),
-            ),
-            if (_isResting)
-              Positioned(
-                bottom: 0, left: 0, right: 0,
-                child: RestTimerPanel(
-                  timerString: _timerString,
-                  progress: _restSeconds / (_totalRestSeconds <= 0 ? 1 : _totalRestSeconds),
-                  onSkip: _stopRestTimer,
+        child: PremiumPageShell(
+          padding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              Padding(
+                padding: EdgeInsets.only(bottom: _isResting ? 112 : 0),
+                child: CustomScrollView(
+                  slivers: [
+                    _buildHeaderSection(),
+                    _buildMainContent(),
+                    const SliverToBoxAdapter(child: SizedBox(height: 92)),
+                  ],
                 ),
               ),
-          ],
+              if (_isResting)
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          colors.background.withValues(alpha: 0.0),
+                          colors.background.withValues(alpha: 0.88),
+                        ],
+                      ),
+                    ),
+                    child: RestTimerPanel(
+                      timerString: _timerString,
+                      progress: _restSeconds / (_totalRestSeconds <= 0 ? 1 : _totalRestSeconds),
+                      onSkip: _stopRestTimer,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildHeaderSection() {
+    final strings = AppStrings.of(context);
+    final planTitle = _planTitle == "Rest Day" ? strings.restDay : _planTitle;
+    final completionPercent = (_completionProgress * 100).round();
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              AppStrings.of(context).todaysSession,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 12,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600,
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        child: PremiumSurface(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+          radius: 30,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SectionEyebrow(strings.todaysSession),
+                        const SizedBox(height: 10),
+                        Text(
+                          planTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 34,
+                            height: 0.98,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  PremiumProgressRing(
+                    progress: _completionProgress,
+                    label: '$completionPercent%',
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _planTitle == "Rest Day" ? AppStrings.of(context).restDay : _planTitle,
-              style: const TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -1.0,
-                color: Colors.white,
+              const SizedBox(height: 22),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  PremiumStatPill(
+                    label: strings.exercise,
+                    value: exercises.length.toString(),
+                    icon: Icons.fitness_center,
+                  ),
+                  PremiumStatPill(
+                    label: strings.sets,
+                    value: '$_completedSetCount/$_totalSetCount',
+                    icon: Icons.done_all,
+                  ),
+                  PremiumStatPill(
+                    label: strings.restLabel,
+                    value: _isResting ? _timerString : '90s',
+                    icon: Icons.timer_outlined,
+                  ),
+                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1187,15 +1257,25 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   Widget _buildMainContent() {
     if (_planTitle == "Rest Day") {
       return SliverToBoxAdapter(
-        child: Container(
-          height: 300, alignment: Alignment.center,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.bedtime, size: 64, color: Colors.white.withValues(alpha: 0.2)),
-              const SizedBox(height: 16),
-            Text(AppStrings.of(context).restRecover, style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
-            ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          child: PremiumSurface(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 46),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bedtime, size: 58, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 18),
+                Text(
+                  AppStrings.of(context).restRecover,
+                  style: TextStyle(
+                    color: context.appColors.mutedText,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -1259,7 +1339,7 @@ class _ExerciseDraftForm extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<ExerciseType>(
-          value: draft.type,
+          initialValue: draft.type,
           decoration: InputDecoration(
             labelText: strings.exerciseType,
             labelStyle: const TextStyle(color: Colors.white70),

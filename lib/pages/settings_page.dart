@@ -8,6 +8,7 @@ import '../services/app_theme.dart';
 import '../services/rest_sound_settings.dart';
 import '../services/weight_unit_settings.dart';
 import '../widgets/language_switcher.dart';
+import '../widgets/premium_widgets.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -31,26 +32,42 @@ class SettingsPage extends StatelessWidget {
     }
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              strings.settings,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface,
+        child: PremiumPageShell(
+          padding: EdgeInsets.zero,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
+            children: [
+              PremiumSurface(
+                padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                radius: 30,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SectionEyebrow(strings.appTitle),
+                    const SizedBox(height: 10),
+                    Text(
+                      strings.settings,
+                      style: TextStyle(
+                        fontSize: 34,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      strings.splashSubtitle,
+                      style: TextStyle(color: colors.mutedText, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 22),
             _SectionTitle(title: strings.languageSetting),
             const SizedBox(height: 8),
-            Container(
+            PremiumSurface(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              radius: 22,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final isNarrow = constraints.maxWidth < 320;
@@ -104,12 +121,9 @@ class SettingsPage extends StatelessWidget {
             const SizedBox(height: 20),
             _SectionTitle(title: strings.about),
             const SizedBox(height: 8),
-            Container(
+            PremiumSurface(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              radius: 22,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -139,13 +153,10 @@ class SettingsPage extends StatelessWidget {
             const SizedBox(height: 8),
             InkWell(
               onTap: openProjectWebsite,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
+              borderRadius: BorderRadius.circular(22),
+              child: PremiumSurface(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                radius: 22,
                 child: Row(
                   children: [
                     Icon(Icons.public, color: colors.mutedText),
@@ -177,7 +188,8 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -195,8 +207,8 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
         letterSpacing: 1.5,
         color: colors.subtleText,
       ),
@@ -261,12 +273,9 @@ class _ThemeSchemeSetting extends StatelessWidget {
           );
         }
 
-        return Container(
+        return PremiumSurface(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(12),
-          ),
+          radius: 22,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -586,12 +595,9 @@ class _BackgroundImageSettingState extends State<_BackgroundImageSetting> {
         final imageDetail = config.imagePath == null || config.imagePath!.isEmpty
             ? strings.noBackgroundImage
             : '${strings.backgroundImageSelected}: ${_fileNameFromPath(config.imagePath!)}';
-        return Container(
+        return PremiumSurface(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(12),
-          ),
+          radius: 22,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -813,12 +819,9 @@ class _RestSoundSettingState extends State<_RestSoundSetting> {
     final strings = AppStrings.of(context);
     final colors = context.appColors;
     final theme = Theme.of(context);
-    return Container(
+    return PremiumSurface(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      radius: 22,
       child: ValueListenableBuilder<String?>(
         valueListenable: RestSoundController.restSoundPath,
         builder: (context, path, _) {
@@ -892,15 +895,11 @@ class _WeightUnitSetting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
-    final colors = context.appColors;
     final theme = Theme.of(context);
 
-    return Container(
+    return PremiumSurface(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      radius: 22,
       child: ValueListenableBuilder<WeightUnit>(
         valueListenable: WeightUnitController.unit,
         builder: (context, unit, _) {
