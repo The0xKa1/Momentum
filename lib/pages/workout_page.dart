@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -10,7 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 // 引入模型和库
 import '../models/workout_model.dart';
-import '../models/exercise_library.dart';
+import '../services/app_data_repository.dart';
 import '../services/rest_timer_alarm.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
@@ -34,11 +32,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   @override
   bool get wantKeepAlive => true;
 
-  static const String _prefsPlanTemplatesKey = "plan_templates";
-  static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
-  static const String _prefsHiddenPlanKey = "hidden_plan_today";
-  static const String _prefsCompletionKey = "daily_completion_state";
-  static const String _prefsDailyWorkoutSnapshotKey = "daily_workout_snapshot";
+  final AppDataRepository _appDataRepository = AppDataRepository();
 
   // --- 状态变量 ---
   String _planTitle = "Rest Day";
@@ -345,10 +339,6 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     }
   }
 
-  DateTime _normalizeDate(DateTime date) {
-    return DateTime.utc(date.year, date.month, date.day);
-  }
-
   Future<void> _promptRestTimeAndStart() async {
     final strings = AppStrings.of(context);
     final colors = context.appColors;
@@ -453,180 +443,39 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   Future<void> _persistCompletionState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final completionString = prefs.getString(_prefsCompletionKey);
-    Map<String, dynamic> completionMap = {};
-    if (completionString != null) {
-      completionMap = json.decode(completionString);
-    }
-
-    final key = _normalizeDate(DateTime.now()).toIso8601String();
-    final completionState = exercises
-        .map((exercise) => exercise.sets.map((set) => set.isCompleted).toList())
-        .toList();
-    completionMap[key] = completionState;
-    await prefs.setString(_prefsCompletionKey, json.encode(completionMap));
+    await _appDataRepository.persistWorkoutCompletionState(DateTime.now(), exercises);
   }
 
   Future<void> _persistDailyWorkoutSnapshot() async {
-    final prefs = await SharedPreferences.getInstance();
-    final snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
-    final Map<String, dynamic> snapshotMap = snapshotString != null
-        ? Map<String, dynamic>.from(json.decode(snapshotString))
-        : {};
-
-    final key = _normalizeDate(DateTime.now()).toIso8601String();
-    snapshotMap[key] = {
-      "planTitle": _planTitle,
-      "planCount": _planCount,
-      "exercises": serializeExercises(exercises),
-    };
-
-    await prefs.setString(_prefsDailyWorkoutSnapshotKey, json.encode(snapshotMap));
+    await _appDataRepository.persistWorkoutSnapshot(
+      DateTime.now(),
+      planTitle: _planTitle,
+      planCount: _planCount,
+      exercises: exercises,
+    );
   }
 
   // --- 数据加载 ---
   Future<void> _loadTodayPlan() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString('events_data');
-    String? templatesString = prefs.getString(_prefsPlanTemplatesKey);
-    String? extrasString = prefs.getString(_prefsDailyExtrasKey);
-    String? snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
-    
     setState(() {
       _planTitle = "Rest Day";
       exercises = [];
       _planCount = 0;
     });
-    
-    if (jsonString == null) return;
-
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-
-    List<dynamic> plans = decodedMap[key] ?? [];
-    String? planName = plans.isNotEmpty ? plans.first.toString() : null;
-    if (planName == null || planName.isEmpty) return;
-
-    if (snapshotString != null) {
-      final snapshotMap = Map<String, dynamic>.from(json.decode(snapshotString));
-      final rawSnapshot = snapshotMap[key];
-      if (rawSnapshot is Map) {
-        final snapshot = Map<String, dynamic>.from(rawSnapshot);
-        final snapshotPlanTitle = (snapshot["planTitle"] ?? "").toString();
-        final rawExercises = snapshot["exercises"];
-        final snapshotPlanCount = (snapshot["planCount"] as num?)?.toInt() ?? 0;
-        if (snapshotPlanTitle == planName && rawExercises is List) {
-          final combinedExercises = parseExercises(List<dynamic>.from(rawExercises));
-          final completionString = prefs.getString(_prefsCompletionKey);
-          if (completionString != null) {
-            final completionMap = json.decode(completionString);
-            final completionForToday = completionMap[key];
-            if (completionForToday is List) {
-              for (int i = 0; i < combinedExercises.length && i < completionForToday.length; i++) {
-                final setFlags = completionForToday[i];
-                if (setFlags is List) {
-                  final sets = combinedExercises[i].sets;
-                  for (int j = 0; j < sets.length && j < setFlags.length; j++) {
-                    final flag = setFlags[j];
-                    if (flag is bool) {
-                      sets[j].isCompleted = flag;
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          setState(() {
-            _planTitle = planName;
-            _planCount = snapshotPlanCount.clamp(0, combinedExercises.length);
-            exercises = combinedExercises;
-          });
-          return;
-        }
-      }
-    }
-
-    List<Exercise> planExercises = [];
-    if (templatesString != null) {
-      final Map<String, dynamic> templates = json.decode(templatesString);
-      if (templates.containsKey(planName)) {
-        final List<dynamic> rawExercises = templates[planName] ?? [];
-        planExercises = parseExercises(rawExercises);
-      }
-    } else {
-      // 兼容旧标签模板
-      planExercises = ExerciseLibrary.getExercisesForList([planName]);
-    }
-
-    // 今日被隐藏的计划动作（仅今日不显示，不改变模板）
-    Set<String> hiddenToday = {};
-    final hiddenString = prefs.getString(_prefsHiddenPlanKey);
-    if (hiddenString != null) {
-      final Map<String, dynamic> hiddenMap = json.decode(hiddenString);
-      final list = hiddenMap[key];
-      if (list != null) {
-        hiddenToday = (list as List<dynamic>).map((e) => e.toString()).toSet();
-      }
-    }
-    planExercises = planExercises.where((e) => !hiddenToday.contains(e.name)).toList();
-
-    List<Exercise> extraExercises = [];
-    if (extrasString != null) {
-      final Map<String, dynamic> extras = json.decode(extrasString);
-      if (extras.containsKey(key)) {
-        final List<dynamic> rawExtras = extras[key] ?? [];
-        extraExercises = parseExercises(rawExtras);
-      }
-    }
-
-    final combinedExercises = [...planExercises, ...extraExercises];
-    final completionString = prefs.getString(_prefsCompletionKey);
-    if (completionString != null) {
-      final completionMap = json.decode(completionString);
-      final completionForToday = completionMap[key];
-      if (completionForToday is List) {
-        for (int i = 0; i < combinedExercises.length && i < completionForToday.length; i++) {
-          final setFlags = completionForToday[i];
-          if (setFlags is List) {
-            final sets = combinedExercises[i].sets;
-            for (int j = 0; j < sets.length && j < setFlags.length; j++) {
-              final flag = setFlags[j];
-              if (flag is bool) {
-                sets[j].isCompleted = flag;
-              }
-            }
-          }
-        }
-      }
-    }
+    final state = await _appDataRepository.loadWorkoutDayState(DateTime.now());
 
     setState(() {
-      _planTitle = planName;
-      _planCount = planExercises.length;
-      exercises = combinedExercises;
+      _planTitle = state.planTitle;
+      _planCount = state.planCount;
+      exercises = state.exercises;
     });
-    await _persistDailyWorkoutSnapshot();
+    if (state.planTitle != "Rest Day") {
+      await _persistDailyWorkoutSnapshot();
+    }
   }
 
   Future<void> _appendDailyExtraExercises(List<Exercise> extras) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
-    Map<String, dynamic> decodedMap = {};
-
-    if (jsonString != null) {
-      decodedMap = json.decode(jsonString);
-    }
-
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-    List<dynamic> existing = decodedMap[key] ?? [];
-    existing.addAll(serializeExercises(extras));
-    decodedMap[key] = existing;
-
-    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    await _appDataRepository.appendDailyExtraExercises(DateTime.now(), extras);
     setState(() {
       exercises = [...exercises, ...extras];
     });
@@ -634,35 +483,13 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
   }
 
   Future<void> _saveExtraExerciseAt(int extraIndex, Exercise updated) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
-    if (jsonString == null) return;
-
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
-    if (extraIndex < 0 || extraIndex >= list.length) return;
-    list[extraIndex] = serializeExercises([updated]).first;
-    decodedMap[key] = list;
-    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    await _appDataRepository.saveDailyExtraExerciseAt(DateTime.now(), extraIndex, updated);
     await _persistDailyWorkoutSnapshot();
   }
 
   /// 从今日训练中移除计划动作（仅隐藏，不删模板）
   Future<void> _removePlanExerciseFromToday(String exerciseName) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString(_prefsHiddenPlanKey);
-    Map<String, dynamic> decodedMap = {};
-    if (jsonString != null) decodedMap = json.decode(jsonString);
-
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
-    if (!list.contains(exerciseName)) list.add(exerciseName);
-    decodedMap[key] = list;
-
-    await prefs.setString(_prefsHiddenPlanKey, json.encode(decodedMap));
+    await _appDataRepository.hidePlanExerciseForDay(DateTime.now(), exerciseName);
     int planIndex = -1;
     for (int i = 0; i < _planCount && i < exercises.length; i++) {
       if (exercises[i].name == exerciseName) {
@@ -673,7 +500,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
     if (planIndex >= 0) {
       setState(() {
         exercises.removeAt(planIndex);
-        _planCount = (_planCount - 1).clamp(0, exercises.length);
+        _planCount = (_planCount - 1).clamp(0, exercises.length).toInt();
       });
       await _persistCompletionState();
       await _persistDailyWorkoutSnapshot();
@@ -684,19 +511,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
 
   /// 删除当日额外动作中的某一项
   Future<void> _removeExtraExercise(int extraIndex) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString(_prefsDailyExtrasKey);
-    if (jsonString == null) return;
-
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
-    DateTime today = _normalizeDate(DateTime.now());
-    String key = today.toIso8601String();
-    List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
-    if (extraIndex < 0 || extraIndex >= list.length) return;
-    list.removeAt(extraIndex);
-    decodedMap[key] = list;
-
-    await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
+    await _appDataRepository.removeDailyExtraExerciseAt(DateTime.now(), extraIndex);
     final exerciseIndex = _planCount + extraIndex;
     if (exerciseIndex >= 0 && exerciseIndex < exercises.length) {
       setState(() {
@@ -780,18 +595,12 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                             );
                             return;
                           }
-                          final prefs = await SharedPreferences.getInstance();
-                          String? jsonString = prefs.getString(_prefsDailyExtrasKey);
-                          Map<String, dynamic> decodedMap = jsonString != null ? json.decode(jsonString) : {};
-                          DateTime today = _normalizeDate(DateTime.now());
-                          String key = today.toIso8601String();
-                          List<dynamic> list = List<dynamic>.from(decodedMap[key] ?? []);
-                          if (extraIndex < list.length) {
-                            list[extraIndex] = serializeExercises([newExercise]).first;
-                            decodedMap[key] = list;
-                            await prefs.setString(_prefsDailyExtrasKey, json.encode(decodedMap));
-                            await _loadTodayPlan();
-                          }
+                          await _appDataRepository.saveDailyExtraExerciseAt(
+                            DateTime.now(),
+                            extraIndex,
+                            newExercise,
+                          );
+                          await _loadTodayPlan();
                           if (!mounted) return;
                           Navigator.pop(this.context);
                         },
@@ -872,6 +681,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               WeightUnitController.fromKg(seed.weight!, _weightUnit),
             ),
     );
+    final repsController = TextEditingController(text: seed.reps?.toString() ?? "");
     final durationController = TextEditingController(text: seed.duration?.toString() ?? "");
     final customControllers = <String, TextEditingController>{
       for (final field in exercise.customFields)
@@ -892,14 +702,35 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
             if (exercise.type == ExerciseType.weighted)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: TextField(
-                  controller: weightController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: strings.weightLabel(WeightUnitController.shortLabel(_weightUnit)),
-                    labelStyle: const TextStyle(color: Colors.white70),
-                  ),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  children: [
+                    SizedBox(
+                      width: 180,
+                      child: TextField(
+                        controller: weightController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: strings.weightLabel(WeightUnitController.shortLabel(_weightUnit)),
+                          labelStyle: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 120,
+                      child: TextField(
+                        controller: repsController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: strings.reps,
+                          labelStyle: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             if (exercise.type == ExerciseType.timed)
@@ -941,7 +772,8 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
               final nextSet = WorkoutSet(isCompleted: seed.isCompleted);
               if (exercise.type == ExerciseType.weighted) {
                 final value = double.tryParse(weightController.text);
-                if (value == null || value < 0) {
+                final reps = int.tryParse(repsController.text);
+                if (value == null || value < 0 || reps == null || reps <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(strings.pleaseEnterValidNumbers),
@@ -951,6 +783,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
                   return;
                 }
                 nextSet.weight = WeightUnitController.toKg(value, _weightUnit);
+                nextSet.reps = reps;
               } else if (exercise.type == ExerciseType.timed) {
                 final value = int.tryParse(durationController.text);
                 if (value == null || value <= 0) {
@@ -1002,6 +835,7 @@ class WorkoutPageState extends State<WorkoutPage> with AutomaticKeepAliveClientM
       ),
     ).whenComplete(() {
       weightController.dispose();
+      repsController.dispose();
       durationController.dispose();
       for (final controller in customControllers.values) {
         controller.dispose();
@@ -1447,12 +1281,14 @@ class _ExerciseDraft {
     String name = "",
     String sets = "3",
     String weight = "",
+    String reps = "",
     String duration = "",
     List<_CustomFieldDraft>? customFields,
   })  : type = type ?? ExerciseType.free,
         nameController = TextEditingController(text: name),
         setsController = TextEditingController(text: sets),
         weightController = TextEditingController(text: weight),
+        repsController = TextEditingController(text: reps),
         durationController = TextEditingController(text: duration),
         customFields = customFields ?? [_CustomFieldDraft()];
 
@@ -1461,6 +1297,7 @@ class _ExerciseDraft {
   final TextEditingController nameController;
   final TextEditingController setsController;
   final TextEditingController weightController;
+  final TextEditingController repsController;
   final TextEditingController durationController;
   final List<_CustomFieldDraft> customFields;
 
@@ -1476,6 +1313,7 @@ class _ExerciseDraft {
           : WeightUnitController.formatNumber(
               WeightUnitController.fromKg(firstSet.weight!, unit),
             ),
+      reps: firstSet.reps?.toString() ?? "",
       duration: firstSet.duration?.toString() ?? "",
       customFields: exercise.type == ExerciseType.free
           ? exercise.customFields
@@ -1525,6 +1363,18 @@ class _ExerciseDraft {
             ),
           ),
         ),
+        SizedBox(
+          width: 160,
+          child: TextField(
+            controller: repsController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: strings.reps,
+              labelStyle: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
       ];
     }
     if (type == ExerciseType.timed) {
@@ -1556,10 +1406,12 @@ class _ExerciseDraft {
     final set = WorkoutSet();
     if (type == ExerciseType.weighted) {
       final value = double.tryParse(weightController.text);
-      if (value == null || value < 0) {
+      final reps = int.tryParse(repsController.text);
+      if (value == null || value < 0 || reps == null || reps <= 0) {
         return null;
       }
       set.weight = WeightUnitController.toKg(value, unit);
+      set.reps = reps;
       return Exercise(
         name: name,
         type: type,
@@ -1603,6 +1455,7 @@ class _ExerciseDraft {
     nameController.dispose();
     setsController.dispose();
     weightController.dispose();
+    repsController.dispose();
     durationController.dispose();
     for (final field in customFields) {
       field.dispose();

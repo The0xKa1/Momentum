@@ -1,9 +1,8 @@
-import 'dart:convert'; // 用于把数据转换成 JSON 字符串
-import 'package:shared_preferences/shared_preferences.dart'; // 硬盘存储工具
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/workout_model.dart';
 import 'plan_settings_page.dart';
+import '../services/app_data_repository.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/weight_unit_settings.dart';
@@ -17,10 +16,7 @@ class PlanPage extends StatefulWidget {
 }
 
 class PlanPageState extends State<PlanPage> {
-  static const String _prefsPlanTemplatesKey = "plan_templates";
-  static const String _prefsDailyExtrasKey = "daily_extra_workout_data";
-  static const String _prefsHiddenPlanKey = "hidden_plan_today";
-  static const String _prefsDailyWorkoutSnapshotKey = "daily_workout_snapshot";
+  final AppDataRepository _appDataRepository = AppDataRepository();
 
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
@@ -88,157 +84,44 @@ class PlanPageState extends State<PlanPage> {
     return completed.contains(planName);
   }
 
-  // 把数据存入硬盘
-  Future<void> _saveEventsToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // 1. 因为 JSON 不支持 DateTime 对象做 Key，我们需要把 Key 转成 String
-    // 目标格式: {"2024-02-14Z": ["Chest Day"], ...}
-    Map<String, dynamic> encodeMap = {};
-    
-    _events.forEach((key, value) {
-      encodeMap[key.toIso8601String()] = value;
-    });
-
-    // 2. 转成 JSON 字符串并保存
-    String jsonString = json.encode(encodeMap);
-    await prefs.setString('events_data', jsonString);
-  }
-
   // 从硬盘读取数据
   Future<void> _loadEventsFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // 1. 获取字符串，如果没有数据就返回
-    String? jsonString = prefs.getString('events_data');
-    if (jsonString == null) return;
-
-    // 2. 解析 JSON
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
-    
-    // 3. 把 String Key 还原回 DateTime，并更新状态
+    final scheduledPlans = await _appDataRepository.loadScheduledPlans();
     setState(() {
-      _events.clear(); // 清空默认的模拟数据
-      decodedMap.forEach((key, value) {
-        // value 是 dynamic (List<dynamic>)，需要强转成 List<String>
-        DateTime dateKey = DateTime.parse(key);
-        List<String> plans = List<String>.from(value);
-        
-        // 这里也要做一次标准化，确保时区不出错
-        _events[_normalizeDate(dateKey)] = plans;
-      });
+      _events
+        ..clear()
+        ..addAll(scheduledPlans);
     });
     _loadSelectedDayDetails();
   }
 
   Future<void> _saveCompletedToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final Map<String, dynamic> encoded = {};
-    _completedByDate.forEach((key, value) {
-      encoded[key.toIso8601String()] = value.toList();
-    });
-    await prefs.setString('completed_plans', json.encode(encoded));
+    await _appDataRepository.saveCompletedPlans(_completedByDate);
   }
 
   Future<void> _loadCompletedFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('completed_plans');
-    if (jsonString == null) return;
-
-    final Map<String, dynamic> decoded = json.decode(jsonString);
+    final completedPlans = await _appDataRepository.loadCompletedPlans();
     setState(() {
-      _completedByDate.clear();
-      decoded.forEach((key, value) {
-        final dateKey = _normalizeDate(DateTime.parse(key));
-        final plans = Set<String>.from(value as List);
-        _completedByDate[dateKey] = plans;
-      });
+      _completedByDate
+        ..clear()
+        ..addAll(completedPlans);
     });
   }
 
   Future<void> _loadTemplatesFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString(_prefsPlanTemplatesKey);
-    if (jsonString == null) {
-      setState(() {
-        _templateNames = [];
-      });
-      return;
-    }
-
-    Map<String, dynamic> decodedMap = json.decode(jsonString);
+    final templateNames = await _appDataRepository.loadTemplateNames();
     setState(() {
-      _templateNames = decodedMap.keys.toList();
+      _templateNames = templateNames;
     });
   }
 
   Future<void> _loadSelectedDayDetails() async {
     final day = _selectedDay ?? _focusedDay;
-    final dateKey = _normalizeDate(day);
-    final planNames = _events[dateKey] ?? [];
-    if (planNames.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _selectedDayExercises = [];
-      });
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final snapshotString = prefs.getString(_prefsDailyWorkoutSnapshotKey);
-    final templateString = prefs.getString(_prefsPlanTemplatesKey);
-    final extrasString = prefs.getString(_prefsDailyExtrasKey);
-    final hiddenString = prefs.getString(_prefsHiddenPlanKey);
-    final key = dateKey.toIso8601String();
-    final planName = planNames.first;
-
-    if (snapshotString != null) {
-      final snapshotMap = Map<String, dynamic>.from(json.decode(snapshotString));
-      final rawSnapshot = snapshotMap[key];
-      if (rawSnapshot is Map) {
-        final snapshot = Map<String, dynamic>.from(rawSnapshot);
-        final snapshotPlanTitle = (snapshot['planTitle'] ?? '').toString();
-        final rawExercises = snapshot['exercises'];
-        if (snapshotPlanTitle == planName && rawExercises is List) {
-          if (!mounted) return;
-          setState(() {
-            _selectedDayExercises = parseExercises(List<dynamic>.from(rawExercises));
-          });
-          return;
-        }
-      }
-    }
-
-    List<Exercise> planExercises = [];
-    if (templateString != null) {
-      final templates = Map<String, dynamic>.from(json.decode(templateString));
-      if (templates.containsKey(planName)) {
-        planExercises = parseExercises(List<dynamic>.from(templates[planName] ?? []));
-      }
-    }
-
-    final hiddenNames = <String>{};
-    if (hiddenString != null) {
-      final hiddenMap = Map<String, dynamic>.from(json.decode(hiddenString));
-      final hiddenList = hiddenMap[key];
-      if (hiddenList is List) {
-        hiddenNames.addAll(hiddenList.map((e) => e.toString()));
-      }
-    }
-    planExercises = planExercises.where((exercise) => !hiddenNames.contains(exercise.name)).toList();
-
-    List<Exercise> extraExercises = [];
-    if (extrasString != null) {
-      final extrasMap = Map<String, dynamic>.from(json.decode(extrasString));
-      final rawExtras = extrasMap[key];
-      if (rawExtras is List) {
-        extraExercises = parseExercises(List<dynamic>.from(rawExtras));
-      }
-    }
+    final exercises = await _appDataRepository.loadExercisesForDay(day);
 
     if (!mounted) return;
     setState(() {
-      _selectedDayExercises = [...planExercises, ...extraExercises];
+      _selectedDayExercises = exercises;
     });
   }
   void _showAddEventDialog() {
@@ -314,8 +197,9 @@ class PlanPageState extends State<PlanPage> {
                     children: _templateNames.map((planName) {
                       return ListTile(
                         title: Text(planName),
-                        onTap: () {
-                          _savePlanForSelectedDay(planName);
+                        onTap: () async {
+                          await _savePlanForSelectedDay(planName);
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                         },
                       );
@@ -330,18 +214,18 @@ class PlanPageState extends State<PlanPage> {
   }
 
   // 4. 保存事件的逻辑
-  void _savePlanForSelectedDay(String planName) {
+  Future<void> _savePlanForSelectedDay(String planName) async {
     if (planName.isEmpty) return;
 
+    final dateKey = _normalizeDate(_selectedDay ?? _focusedDay);
     setState(() {
-      final dateKey = _normalizeDate(_selectedDay ?? _focusedDay);
       _events[dateKey] = [planName];
       _completedByDate.remove(dateKey);
     });
 
-    _saveEventsToPrefs();
-    _saveCompletedToPrefs();
-    _loadSelectedDayDetails();
+    await _appDataRepository.savePlanForDay(dateKey, planName);
+    await _saveCompletedToPrefs();
+    await _loadSelectedDayDetails();
   }
 
   void _togglePlanCompleted(String planName) {
@@ -741,7 +625,7 @@ class PlanPageState extends State<PlanPage> {
           ),
           
           // 当滑动发生时触发
-          onDismissed: (direction) {
+          onDismissed: (direction) async {
             setState(() {
               // 1. 从内存列表中删除
               final dateKey = _normalizeDate(_selectedDay!);
@@ -758,9 +642,10 @@ class PlanPageState extends State<PlanPage> {
             });
             
             // 2. 立即同步到硬盘
-            _saveEventsToPrefs();
-            _saveCompletedToPrefs();
-            _loadSelectedDayDetails();
+            await _appDataRepository.deletePlanForDay(_selectedDay!, index);
+            await _saveCompletedToPrefs();
+            await _loadSelectedDayDetails();
+            if (!context.mounted) return;
 
             // 3. 提示用户
             ScaffoldMessenger.of(context).showSnackBar(
@@ -937,6 +822,9 @@ class PlanPageState extends State<PlanPage> {
     final parts = <String>[];
     if (set.weight != null) {
       parts.add(WeightUnitController.formatWeight(set.weight!, unit));
+    }
+    if (set.reps != null) {
+      parts.add('${set.reps} ${AppStrings.of(context).reps.toLowerCase()}');
     }
     if (set.duration != null) {
       parts.add('${set.duration}s');

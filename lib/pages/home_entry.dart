@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'workout_page.dart'; // 引入训练页
 import 'plan_page.dart';
+import 'diet_page.dart';
 import 'settings_page.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
@@ -15,6 +16,7 @@ class HomeEntryPage extends StatefulWidget {
 
 final GlobalKey<WorkoutPageState> workoutKey = GlobalKey<WorkoutPageState>();
 final GlobalKey<PlanPageState> planKey = GlobalKey<PlanPageState>();
+final GlobalKey<DietPageState> dietKey = GlobalKey<DietPageState>();
 
 class _HomeEntryPageState extends State<HomeEntryPage> {
   int _currentIndex = 0; // 当前选中的是第几个图标
@@ -26,9 +28,10 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
   void initState() {
     super.initState();
     _pages = [
-      WorkoutPage(key: workoutKey),    // 0: 训练
-      PlanPage(key: planKey),       // 1: 计划 (这里修改了！)
-      const SettingsPage(), // 2: 设置/关于
+      WorkoutPage(key: workoutKey),
+      PlanPage(key: planKey),
+      DietPage(key: dietKey),
+      const SettingsPage(),
     ];
   }
 
@@ -60,6 +63,9 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
               if (index == 1) {
                 planKey.currentState?.refreshData();
               }
+              if (index == 2) {
+                dietKey.currentState?.refreshData();
+              }
               setState(() {
                 _currentIndex = index;
               });
@@ -75,6 +81,11 @@ class _HomeEntryPageState extends State<HomeEntryPage> {
                 icon: const Icon(Icons.calendar_month_outlined),
                 selectedIcon: Icon(Icons.calendar_month, color: colors.accentForeground),
                 label: AppStrings.of(context).plan,
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.restaurant_menu_outlined),
+                selectedIcon: Icon(Icons.restaurant_menu, color: colors.accentForeground),
+                label: AppStrings.of(context).diet,
               ),
               NavigationDestination(
                 icon: const Icon(Icons.settings_outlined),

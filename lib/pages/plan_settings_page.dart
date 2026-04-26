@@ -450,12 +450,14 @@ class _ExerciseDraft {
     String name = "",
     String sets = "3",
     String weight = "",
+    String reps = "",
     String duration = "",
     List<_CustomFieldDraft>? customFields,
   })  : type = type ?? ExerciseType.free,
         nameController = TextEditingController(text: name),
         setsController = TextEditingController(text: sets),
         weightController = TextEditingController(text: weight),
+        repsController = TextEditingController(text: reps),
         durationController = TextEditingController(text: duration),
         customFields = customFields ?? [_CustomFieldDraft()];
 
@@ -464,6 +466,7 @@ class _ExerciseDraft {
   final TextEditingController nameController;
   final TextEditingController setsController;
   final TextEditingController weightController;
+  final TextEditingController repsController;
   final TextEditingController durationController;
   final List<_CustomFieldDraft> customFields;
 
@@ -479,6 +482,7 @@ class _ExerciseDraft {
           : WeightUnitController.formatNumber(
               WeightUnitController.fromKg(firstSet.weight!, unit),
             ),
+      reps: firstSet.reps?.toString() ?? "",
       duration: firstSet.duration?.toString() ?? "",
       customFields: exercise.type == ExerciseType.free
           ? exercise.customFields
@@ -527,6 +531,15 @@ class _ExerciseDraft {
             ),
           ),
         ),
+        SizedBox(
+          width: 160,
+          child: TextField(
+            controller: repsController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(labelText: strings.reps),
+          ),
+        ),
       ];
     }
     if (type == ExerciseType.timed) {
@@ -555,8 +568,10 @@ class _ExerciseDraft {
     final set = WorkoutSet();
     if (type == ExerciseType.weighted) {
       final value = double.tryParse(weightController.text);
-      if (value == null || value < 0) return null;
+      final reps = int.tryParse(repsController.text);
+      if (value == null || value < 0 || reps == null || reps <= 0) return null;
       set.weight = WeightUnitController.toKg(value, unit);
+      set.reps = reps;
       return Exercise(name: name, type: type, sets: List.generate(setCount, (_) => set.copy()));
     }
 
@@ -590,6 +605,7 @@ class _ExerciseDraft {
     nameController.dispose();
     setsController.dispose();
     weightController.dispose();
+    repsController.dispose();
     durationController.dispose();
     for (final field in customFields) {
       field.dispose();

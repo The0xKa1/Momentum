@@ -28,12 +28,14 @@ String exerciseTypeKey(ExerciseType type) {
 
 class WorkoutSet {
   double? weight;
+  int? reps;
   int? duration;
   Map<String, String> customValues;
   bool isCompleted;
 
   WorkoutSet({
     this.weight,
+    this.reps,
     this.duration,
     Map<String, String>? customValues,
     this.isCompleted = false,
@@ -43,6 +45,7 @@ class WorkoutSet {
     final rawCustomValues = Map<String, dynamic>.from(data['customValues'] ?? const {});
     return WorkoutSet(
       weight: (data['weight'] as num?)?.toDouble(),
+      reps: (data['reps'] as num?)?.toInt(),
       duration: (data['duration'] as num?)?.toInt(),
       customValues: rawCustomValues.map((key, value) => MapEntry(key, value.toString())),
       isCompleted: data['isCompleted'] == true,
@@ -52,14 +55,17 @@ class WorkoutSet {
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
     if (weight != null) json['weight'] = weight;
+    if (reps != null) json['reps'] = reps;
     if (duration != null) json['duration'] = duration;
     if (customValues.isNotEmpty) json['customValues'] = customValues;
+    if (isCompleted) json['isCompleted'] = true;
     return json;
   }
 
   WorkoutSet copy() {
     return WorkoutSet(
       weight: weight,
+      reps: reps,
       duration: duration,
       customValues: Map<String, String>.from(customValues),
       isCompleted: isCompleted,

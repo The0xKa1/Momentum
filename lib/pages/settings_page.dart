@@ -1,8 +1,15 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/ai_provider_settings.dart';
 import '../services/app_background.dart';
+import '../services/ai_connection_service.dart';
+import '../services/ai_settings.dart';
+import '../services/app_storage.dart';
 import '../services/app_strings.dart';
 import '../services/app_theme.dart';
 import '../services/rest_sound_settings.dart';
@@ -118,6 +125,14 @@ class SettingsPage extends StatelessWidget {
             _SectionTitle(title: strings.soundSetting),
             const SizedBox(height: 8),
             const _RestSoundSetting(),
+            const SizedBox(height: 20),
+            _SectionTitle(title: strings.aiAnalysis),
+            const SizedBox(height: 8),
+            const _AiAnalysisSetting(),
+            const SizedBox(height: 20),
+            _SectionTitle(title: strings.dataStorage),
+            const SizedBox(height: 8),
+            const _DataBackupSetting(),
             const SizedBox(height: 20),
             _SectionTitle(title: strings.about),
             const SizedBox(height: 8),
@@ -930,6 +945,556 @@ class _WeightUnitSetting extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _AiAnalysisSetting extends StatefulWidget {
+  const _AiAnalysisSetting();
+
+  @override
+  State<_AiAnalysisSetting> createState() => _AiAnalysisSettingState();
+}
+
+class _AiAnalysisSettingState extends State<_AiAnalysisSetting> {
+  final AiConnectionService _connectionService = AiConnectionService();
+  final TextEditingController _baseUrlController = TextEditingController();
+  final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _modelController = TextEditingController();
+
+  AiProviderType _providerType = AiProviderType.none;
+  bool _enabled = false;
+  bool _obscureApiKey = true;
+  bool _isSaving = false;
+  bool _isTesting = false;
+  String? _testMessage;
+  bool? _testSuccess;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrate();
+  }
+
+  @override
+  void dispose() {
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _hydrate() async {
+    final settings = await AiSettingsController.getSettings();
+    if (!mounted) return;
+    setState(() {
+      _providerType = settings.providerType;
+      _enabled = settings.enabled;
+      _baseUrlController.text = settings.baseUrl;
+      _apiKeyController.text = settings.apiKey;
+      _modelController.text = settings.model;
+    });
+    await AiSettingsController.load();
+  }
+
+  AiProviderSettings _draftSettings() {
+    return AiProviderSettings(
+      providerType: _providerType,
+      apiKey: _apiKeyController.text.trim(),
+      baseUrl: _baseUrlController.text.trim(),
+      model: _modelController.text.trim(),
+      enabled: _enabled,
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Future<void> _saveSettings() async {
+    if (_isSaving) return;
+    final strings = AppStrings.of(context);
+    final draft = _draftSettings();
+
+    if (draft.enabled && !draft.hasRequiredFields) {
+      _showMessage(strings.aiIncompleteSettings);
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await AiSettingsController.save(draft);
+      _showMessage(strings.aiSettingsSaved);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearSettings() async {
+    if (_isSaving) return;
+    setState(() {
+      _providerType = AiProviderType.none;
+      _enabled = false;
+      _baseUrlController.clear();
+      _apiKeyController.clear();
+      _modelController.clear();
+      _testMessage = null;
+      _testSuccess = null;
+    });
+    await AiSettingsController.clear();
+  }
+
+  Future<void> _testConnection() async {
+    if (_isTesting || _isSaving) return;
+    final strings = AppStrings.of(context);
+    final draft = _draftSettings();
+    if (!draft.hasRequiredFields) {
+      _showMessage(strings.aiIncompleteSettings);
+      return;
+    }
+
+    setState(() {
+      _isTesting = true;
+      _testMessage = null;
+      _testSuccess = null;
+    });
+
+    try {
+      final result = await _connectionService.test(draft);
+      if (!mounted) return;
+      setState(() {
+        _testSuccess = result.success;
+        _testMessage = result.success
+            ? strings.aiConnectionSuccess
+            : '${strings.aiConnectionFailed}: ${result.message}';
+      });
+      _showMessage(_testMessage!);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTesting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final colors = context.appColors;
+    final theme = Theme.of(context);
+
+    return PremiumSurface(
+      padding: const EdgeInsets.all(16),
+      radius: 22,
+      child: ValueListenableBuilder<AiProviderSettings>(
+        valueListenable: AiSettingsController.settings,
+        builder: (context, settings, _) {
+          final draft = _draftSettings();
+          final canEnable = draft.hasRequiredFields;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      strings.aiAnalysis,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: _enabled && canEnable,
+                    onChanged: (value) {
+                      if (value && !canEnable) {
+                        _showMessage(strings.aiIncompleteSettings);
+                        return;
+                      }
+                      setState(() {
+                        _enabled = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(strings.aiSettingsHint, style: TextStyle(color: colors.mutedText)),
+              const SizedBox(height: 6),
+              Text(strings.aiSecurityHint, style: TextStyle(color: colors.subtleText)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: Text(strings.aiOpenAi),
+                    selected: _providerType == AiProviderType.openAi,
+                    onSelected: (_) {
+                      setState(() {
+                        _providerType = AiProviderType.openAi;
+                        if (_baseUrlController.text.trim().isEmpty) {
+                          _baseUrlController.text = 'https://api.openai.com/v1';
+                        }
+                        if (_modelController.text.trim().isEmpty) {
+                          _modelController.text = 'gpt-5.4-mini';
+                        }
+                        _testMessage = null;
+                        _testSuccess = null;
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: Text(strings.aiSiliconFlow),
+                    selected: _providerType == AiProviderType.siliconFlow,
+                    onSelected: (_) {
+                      setState(() {
+                        _providerType = AiProviderType.siliconFlow;
+                        _baseUrlController.text = 'https://api.siliconflow.cn/v1';
+                        if (_modelController.text.trim().isEmpty ||
+                            _modelController.text == 'gpt-5.4-mini') {
+                          _modelController.text = 'Qwen/Qwen2.5-VL-32B-Instruct';
+                        }
+                        _testMessage = null;
+                        _testSuccess = null;
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: Text(strings.aiOpenAiCompatible),
+                    selected: _providerType == AiProviderType.openAiCompatible,
+                    onSelected: (_) {
+                      setState(() {
+                        _providerType = AiProviderType.openAiCompatible;
+                        if (_baseUrlController.text.trim().isEmpty) {
+                          _baseUrlController.text = 'https://your-provider.example/v1';
+                        }
+                        _testMessage = null;
+                        _testSuccess = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_providerType == AiProviderType.openAiCompatible ||
+                  _providerType == AiProviderType.siliconFlow) ...[
+                _SettingsTextField(
+                  controller: _baseUrlController,
+                  label: strings.aiBaseUrl,
+                  hintText: _providerType == AiProviderType.siliconFlow
+                      ? 'https://api.siliconflow.cn/v1'
+                      : 'https://your-provider.example/v1',
+                  onChanged: (_) => setState(() {
+                    _testMessage = null;
+                    _testSuccess = null;
+                  }),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _providerType == AiProviderType.siliconFlow
+                      ? strings.aiSiliconFlowHint
+                      : strings.aiCompatibleHint,
+                  style: TextStyle(color: colors.subtleText, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+              ],
+              _SettingsTextField(
+                controller: _modelController,
+                label: strings.aiModel,
+                hintText: _providerType == AiProviderType.none
+                    ? strings.aiProviderNotChosen
+                    : _providerType == AiProviderType.siliconFlow
+                        ? 'Qwen/Qwen2.5-VL-32B-Instruct'
+                        : 'gpt-5.4-mini',
+                onChanged: (_) => setState(() {
+                  _testMessage = null;
+                  _testSuccess = null;
+                }),
+              ),
+              const SizedBox(height: 12),
+              _SettingsTextField(
+                controller: _apiKeyController,
+                label: strings.aiApiKey,
+                hintText: 'sk-...',
+                obscureText: _obscureApiKey,
+                onChanged: (_) => setState(() {
+                  _testMessage = null;
+                  _testSuccess = null;
+                }),
+                suffixIcon: IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _obscureApiKey = !_obscureApiKey;
+                    });
+                  },
+                  icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      settings.isReadyForAnalysis ? strings.aiEnabled : strings.aiDisabled,
+                      style: TextStyle(color: colors.subtleText),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ElevatedButton(
+                    onPressed: _isSaving ? null : _saveSettings,
+                    child: Text(strings.aiSaveSettings),
+                  ),
+                  OutlinedButton(
+                    onPressed: _isTesting ? null : _testConnection,
+                    child: Text(strings.aiTestConnection),
+                  ),
+                  TextButton(
+                    onPressed: _isSaving ? null : _clearSettings,
+                    child: Text(strings.aiClearSettings, style: TextStyle(color: colors.subtleText)),
+                  ),
+                ],
+              ),
+              if (_testMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _testMessage!,
+                  style: TextStyle(
+                    color: _testSuccess == true
+                        ? Theme.of(context).colorScheme.primary
+                        : colors.subtleText,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SettingsTextField extends StatelessWidget {
+  const _SettingsTextField({
+    required this.controller,
+    required this.label,
+    this.hintText,
+    this.obscureText = false,
+    this.onChanged,
+    this.suffixIcon,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? hintText;
+  final bool obscureText;
+  final ValueChanged<String>? onChanged;
+  final Widget? suffixIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      onChanged: onChanged,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        hintStyle: TextStyle(color: colors.subtleText),
+        labelStyle: TextStyle(color: colors.subtleText),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: colors.surfaceElevated,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+        ),
+      ),
+    );
+  }
+}
+
+class _DataBackupSetting extends StatefulWidget {
+  const _DataBackupSetting();
+
+  @override
+  State<_DataBackupSetting> createState() => _DataBackupSettingState();
+}
+
+class _DataBackupSettingState extends State<_DataBackupSetting> {
+  bool _isBusy = false;
+  String? _lastFileName;
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final idx = normalized.lastIndexOf('/');
+    return idx >= 0 ? normalized.substring(idx + 1) : normalized;
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Future<void> _exportBackup() async {
+    if (_isBusy) return;
+    final strings = AppStrings.of(context);
+    setState(() {
+      _isBusy = true;
+    });
+
+    try {
+      final fileName = AppStorageController.buildBackupFileName(DateTime.now());
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: strings.backupChooseFolder,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        bytes: Uint8List.fromList(utf8.encode(await AppStorageController.exportBackupJson())),
+      );
+      if (path == null && !kIsWeb) return;
+
+      if (!mounted) return;
+      setState(() {
+        _lastFileName = path == null ? fileName : _fileNameFromPath(path);
+      });
+      _showMessage(strings.exportBackupSuccess);
+    } catch (_) {
+      _showMessage(strings.backupActionFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importBackup() async {
+    if (_isBusy) return;
+    final strings = AppStrings.of(context);
+    setState(() {
+      _isBusy = true;
+    });
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: strings.backupChooseFile,
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        withData: true,
+      );
+      final file = result?.files.single;
+      if (file == null) return;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        _showMessage(strings.backupActionFailed);
+        return;
+      }
+
+      final raw = utf8.decode(bytes);
+      await AppStorageController.importBackupJson(raw);
+
+      if (!mounted) return;
+      setState(() {
+        _lastFileName = file.name;
+      });
+      _showMessage(strings.importBackupSuccess);
+    } catch (_) {
+      _showMessage(strings.backupActionFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final colors = context.appColors;
+    final theme = Theme.of(context);
+
+    return PremiumSurface(
+      padding: const EdgeInsets.all(16),
+      radius: 22,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strings.dataBackup,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(strings.dataBackupHint, style: TextStyle(color: colors.mutedText)),
+          if (_lastFileName != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _lastFileName!,
+              style: TextStyle(color: colors.subtleText, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton(
+                onPressed: _isBusy ? null : _exportBackup,
+                child: Text(strings.exportBackup),
+              ),
+              OutlinedButton(
+                onPressed: _isBusy ? null : _importBackup,
+                child: Text(strings.importBackup),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

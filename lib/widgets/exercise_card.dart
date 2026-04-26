@@ -275,6 +275,9 @@ class ExerciseCard extends StatelessWidget {
     final pills = <Widget>[];
     if (exercise.type == ExerciseType.weighted && set.weight != null) {
       pills.add(_buildValuePill(WeightUnitController.formatWeight(set.weight!, unit)));
+      if (set.reps != null) {
+        pills.add(_buildValuePill('${set.reps} ${strings.reps.toLowerCase()}'));
+      }
     }
     if (exercise.type == ExerciseType.timed && set.duration != null) {
       pills.add(_buildValuePill('${set.duration}s'));
